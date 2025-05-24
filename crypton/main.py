@@ -223,12 +223,26 @@ def run_backtest(config_path: Optional[str] = None):
             symbol=symbol,
             timeframe=timeframe,
             since=since,
-            limit=limit
+            limit=limit,
+            end_date=end_date  # Dodajemo end_date parametar
         )
         
         if df.empty:
             logger.error(f"No historical data available for {symbol}")
             continue
+            
+        # Debug: Log the actual date range of the fetched data
+        if not df.empty:
+            actual_start_date = df['timestamp'].min()
+            actual_end_date = df['timestamp'].max()
+            logger.info(f"ACTUAL DATA RANGE: {symbol} data from {actual_start_date} to {actual_end_date}")
+            logger.info(f"REQUESTED RANGE: from {since} to {end_date if end_date else 'now'}")
+            
+            # Provera da li se stvarni datumi poklapaju sa traženim
+            if actual_start_date.date() > since.date():
+                logger.warning(f"Actual start date {actual_start_date} is later than requested {since}")
+            if end_date and actual_end_date.date() < end_date.date():
+                logger.warning(f"Actual end date {actual_end_date} is earlier than requested {end_date}")
         
         # Run backtest
         strategy, metrics = backtest_harness.run_backtest(symbol, timeframe, df)

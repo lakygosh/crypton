@@ -85,50 +85,137 @@ class DataFetcher:
         symbol: str, 
         timeframe: str = '15m', 
         since: Optional[Union[int, datetime]] = None, 
-        limit: int = 1000
+        limit: int = 1000,
+        end_date: Optional[datetime] = None
     ) -> pd.DataFrame:
         """
         Fetch historical OHLCV (Open, High, Low, Close, Volume) data.
+        Supports pagination for fetching longer time ranges.
         
         Args:
             symbol: Trading pair symbol (e.g., 'BTC/USDT')
             timeframe: Candle timeframe (e.g., '1m', '1h', '1d')
             since: Start time in milliseconds or datetime
-            limit: Maximum number of candles to fetch
+            limit: Maximum number of candles per request
+            end_date: Optional end date to stop fetching
             
         Returns:
             DataFrame with OHLCV data
         """
         try:
-            logger.info(f"Fetching historical data for {symbol} at {timeframe} timeframe")
+            logger.info(f"Fetching historical data for {symbol} at {timeframe} timeframe from {since} to {end_date if end_date else 'now'}")
             
             # Convert datetime to timestamp if needed
             if isinstance(since, datetime):
-                since = int(since.timestamp() * 1000)
+                since_ts = int(since.timestamp() * 1000)
+            else:
+                since_ts = since
+                
+            # Convert end_date to timestamp if provided
+            end_ts = None
+            if end_date is not None:
+                end_ts = int(end_date.timestamp() * 1000)
             
-            # Fetch the data
-            ohlcv = self.exchange.fetch_ohlcv(
-                symbol=symbol,
-                timeframe=timeframe,
-                since=since,
-                limit=limit
-            )
+            # Calculate time per candle in milliseconds
+            timeframe_ms = self._get_timeframe_ms(timeframe)
+            
+            # Use pagination to fetch all data within date range
+            all_candles = []
+            current_since = since_ts
+            page_count = 0
+            max_pages = 50  # Ograničimo na 50 stranica (50,000 sveća) kao sigurnosna mera
+            
+            while True:
+                page_count += 1
+                # Fetch batch of candles
+                logger.debug(f"Fetching batch {page_count} for {symbol} since {datetime.fromtimestamp(current_since/1000)}")
+                ohlcv = self.exchange.fetch_ohlcv(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    since=current_since,
+                    limit=limit
+                )
+                
+                if not ohlcv or len(ohlcv) == 0:
+                    logger.debug(f"No more data for {symbol}")
+                    break  # No more data
+                    
+                all_candles.extend(ohlcv)
+                logger.debug(f"Added {len(ohlcv)} candles, total now: {len(all_candles)}")
+                
+                # Check if we've reached the end date
+                last_candle_time = ohlcv[-1][0]
+                if end_ts and last_candle_time >= end_ts:
+                    logger.debug(f"Reached end date, stopping pagination")
+                    break
+                    
+                # Check if we got fewer candles than requested (end of data)
+                if len(ohlcv) < limit:
+                    logger.debug(f"Received fewer candles than limit, probably reached end of data")
+                    break
+                    
+                # Update since timestamp for next batch (add 1 to avoid duplicates)
+                current_since = last_candle_time + 1
+                
+                # Safety check - don't fetch too many pages
+                if page_count >= max_pages:
+                    logger.warning(f"Reached maximum page limit ({max_pages}) for {symbol}, truncating results")
+                    break
+            
+            if not all_candles:
+                logger.warning(f"No data returned for {symbol}")
+                return pd.DataFrame()
             
             # Convert to DataFrame
             df = pd.DataFrame(
-                ohlcv, 
+                all_candles, 
                 columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
             )
             
             # Convert timestamp to datetime
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
-            logger.info(f"Fetched {len(df)} candles for {symbol}")
+            # Filter by end_date if provided
+            if end_date is not None:
+                df = df[df['timestamp'] <= end_date]
+            
+            # Sort by timestamp to ensure chronological order
+            df = df.sort_values('timestamp').reset_index(drop=True)
+            
+            logger.info(f"Fetched {len(df)} candles for {symbol} from {df['timestamp'].min()} to {df['timestamp'].max()}")
             return df
             
         except Exception as e:
             logger.error(f"Error fetching historical data: {e}")
+            logger.error(f"Exception details: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return pd.DataFrame()
+    
+    def _get_timeframe_ms(self, timeframe: str) -> int:
+        """
+        Convert timeframe string to milliseconds.
+        
+        Args:
+            timeframe: Timeframe string (e.g. '1m', '5m', '1h', '1d')
+            
+        Returns:
+            Timeframe in milliseconds
+        """
+        unit = timeframe[-1]
+        value = int(timeframe[:-1])
+        
+        if unit == 'm':
+            return value * 60 * 1000
+        elif unit == 'h':
+            return value * 60 * 60 * 1000
+        elif unit == 'd':
+            return value * 24 * 60 * 60 * 1000
+        elif unit == 'w':
+            return value * 7 * 24 * 60 * 60 * 1000
+        else:
+            logger.warning(f"Unknown timeframe unit: {unit}, defaulting to 1m")
+            return 60 * 1000  # default to 1m
     
     def start_live_kline_stream(self, symbol: str, interval: str = '1m', callback=None):
         """

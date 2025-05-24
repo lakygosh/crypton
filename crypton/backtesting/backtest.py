@@ -41,7 +41,8 @@ class MeanReversionBT(bt.Strategy):
         ('stop_loss_pct', 0.02),
         ('take_profit_pct', 0.04),
         ('position_size_pct', 0.01),
-        ('cool_down_hours', 4) # Default cool-down period
+        ('cool_down_hours', 4), # Default cool-down period in hours
+        ('cool_down_minutes', 0) # Default cool-down period in minutes
     )
     
     def __init__(self):
@@ -124,8 +125,8 @@ class MeanReversionBT(bt.Strategy):
         """Strategy logic executed on each bar."""
         # Skip if in cool-down period
         current_time = self.datas[0].datetime.datetime(0)
-        if self.params.cool_down_hours > 0 and self.last_trade_time != datetime.min:
-            if (current_time - self.last_trade_time) < timedelta(hours=self.params.cool_down_hours):
+        if (self.params.cool_down_hours > 0 or self.params.cool_down_minutes > 0) and self.last_trade_time != datetime.min:
+            if (current_time - self.last_trade_time) < timedelta(hours=self.params.cool_down_hours, minutes=self.params.cool_down_minutes):
                 return
         
         # Check for buy signal
@@ -291,7 +292,8 @@ class MultiAssetMeanReversionBT(bt.Strategy):
         ('stop_loss_pct', 0.02),
         ('take_profit_pct', 0.04),
         ('position_size_pct', 0.333),  # Default to 1/3 of equity per symbol
-        ('cool_down_hours', 4) # Default cool-down period
+        ('cool_down_hours', 4), # Default cool-down period in hours
+        ('cool_down_minutes', 0) # Default cool-down period in minutes
     )
     
     def __init__(self):
@@ -459,8 +461,8 @@ class MultiAssetMeanReversionBT(bt.Strategy):
                 
             # Skip if in cool-down period
             current_time = data.datetime.datetime(0)
-            if self.params.cool_down_hours > 0 and self.last_trade_time[symbol] != datetime.min:
-                if (current_time - self.last_trade_time[symbol]) < timedelta(hours=self.params.cool_down_hours):
+            if (self.params.cool_down_hours > 0 or self.params.cool_down_minutes > 0) and self.last_trade_time[symbol] != datetime.min:
+                if (current_time - self.last_trade_time[symbol]) < timedelta(hours=self.params.cool_down_hours, minutes=self.params.cool_down_minutes):
                     continue
             
             # Get indicators for this symbol
@@ -730,8 +732,38 @@ class BacktestHarness:
             'stop_loss_pct': self.risk_config.get('stop_loss_pct', 0.02),
             'take_profit_pct': self.risk_config.get('take_profit_pct', 0.04),
             'position_size_pct': self.risk_config.get('position_size_pct', 0.01),
-            'cool_down_hours': self.cool_down.get('hours', 4)
+            'cool_down_hours': 0,
+            'cool_down_minutes': 0
         }
+        
+        # Parse cool_down parameter
+        cool_down_value = self.cool_down.get('hours', 4)
+        if isinstance(cool_down_value, str):
+            if cool_down_value.endswith('m'):
+                try:
+                    strategy_params['cool_down_minutes'] = int(cool_down_value.rstrip('m'))
+                    logger.info(f"Cool-down set to {strategy_params['cool_down_minutes']} minutes")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    strategy_params['cool_down_hours'] = 4
+            elif cool_down_value.endswith('h'):
+                try:
+                    strategy_params['cool_down_hours'] = int(cool_down_value.rstrip('h'))
+                    logger.info(f"Cool-down set to {strategy_params['cool_down_hours']} hours")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    strategy_params['cool_down_hours'] = 4
+            else:
+                try:
+                    # Assume hours if no unit is specified
+                    strategy_params['cool_down_hours'] = float(cool_down_value)
+                    logger.info(f"Cool-down set to {strategy_params['cool_down_hours']} hours")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    strategy_params['cool_down_hours'] = 4
+        else:
+            # If a numeric value, assume it's hours
+            strategy_params['cool_down_hours'] = float(cool_down_value)
         
         # Add strategy
         cerebro.addstrategy(MeanReversionBT, **strategy_params)
@@ -968,8 +1000,38 @@ class BacktestHarness:
             'stop_loss_pct': self.risk_config.get('stop_loss_pct', 0.02),
             'take_profit_pct': self.risk_config.get('take_profit_pct', 0.04),
             'position_size_pct': self.risk_config.get('position_size_pct', 0.333),  # Use from config
-            'cool_down_hours': self.cool_down.get('hours', 4)
+            'cool_down_hours': 0,
+            'cool_down_minutes': 0
         }
+        
+        # Parse cool_down parameter
+        cool_down_value = self.cool_down.get('hours', 4)
+        if isinstance(cool_down_value, str):
+            if cool_down_value.endswith('m'):
+                try:
+                    strategy_params['cool_down_minutes'] = int(cool_down_value.rstrip('m'))
+                    logger.info(f"Cool-down set to {strategy_params['cool_down_minutes']} minutes")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    strategy_params['cool_down_hours'] = 4
+            elif cool_down_value.endswith('h'):
+                try:
+                    strategy_params['cool_down_hours'] = int(cool_down_value.rstrip('h'))
+                    logger.info(f"Cool-down set to {strategy_params['cool_down_hours']} hours")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    strategy_params['cool_down_hours'] = 4
+            else:
+                try:
+                    # Assume hours if no unit is specified
+                    strategy_params['cool_down_hours'] = float(cool_down_value)
+                    logger.info(f"Cool-down set to {strategy_params['cool_down_hours']} hours")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    strategy_params['cool_down_hours'] = 4
+        else:
+            # If a numeric value, assume it's hours
+            strategy_params['cool_down_hours'] = float(cool_down_value)
         
         # Add multi-asset strategy
         cerebro.addstrategy(MultiAssetMeanReversionBT, **strategy_params)

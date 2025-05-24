@@ -1,0 +1,513 @@
+{
+    "run_timestamp": "20250524_161102_724947",
+    "input_parameters": {
+        "symbols": "BTC/USDT,ETH/USDT,SUI/USDT",
+        "initial_cash": 1000.0,
+        "commission": 0.001,
+        "bb_length": 20,
+        "bb_std": 2,
+        "rsi_length": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.05,
+        "position_size_pct": 0.333,
+        "cool_down_hours": 1
+    },
+    "detailed_trade_events_by_symbol": {
+        "SUI/USDT": [
+            "2025-05-09 03:45:00 [SUI/USDT] BUY CREATE, Price: 3.83, Size: 86.927013, Value: $333.00, RSI: 27.61, BB Lower: 3.88",
+            "2025-05-09 04:00:00 [SUI/USDT] BUY EXECUTED, Price: 3.83, Size: 86.927013, Value: $332.82, Comm: $0.33",
+            "2025-05-09 08:15:00 [SUI/USDT] TAKE PROFIT, Price: 4.02, Size: 86.927013, Profit: 5.09%, RSI: 60.96",
+            "2025-05-09 08:30:00 [SUI/USDT] SELL EXECUTED, Price: 4.02, Size: -86.927013, Value: $-349.77, Comm: $0.35",
+            "2025-05-09 08:30:00 [SUI/USDT] TRADE COMPLETED, Gross: 16.95, Net: 16.27",
+            "2025-05-10 11:30:00 [SUI/USDT] BUY CREATE, Price: 3.85, Size: 87.843557, Value: $338.42, RSI: 26.52, BB Lower: 3.90",
+            "2025-05-10 11:45:00 [SUI/USDT] BUY EXECUTED, Price: 3.84, Size: 87.843557, Value: $337.75, Comm: $0.34",
+            "2025-05-10 17:30:00 [SUI/USDT] TAKE PROFIT, Price: 4.05, Size: 87.843557, Profit: 5.30%, RSI: 68.83",
+            "2025-05-10 17:45:00 [SUI/USDT] SELL EXECUTED, Price: 4.05, Size: -87.843557, Value: $-356.07, Comm: $0.36",
+            "2025-05-10 17:45:00 [SUI/USDT] TRADE COMPLETED, Gross: 18.32, Net: 17.62",
+            "2025-05-12 18:15:00 [SUI/USDT] BUY CREATE, Price: 3.84, Size: 91.187777, Value: $350.40, RSI: 26.79, BB Lower: 3.84",
+            "2025-05-12 18:30:00 [SUI/USDT] BUY EXECUTED, Price: 3.84, Size: 91.187777, Value: $350.40, Comm: $0.35",
+            "2025-05-13 16:00:00 [SUI/USDT] TAKE PROFIT, Price: 4.04, Size: 91.187777, Profit: 5.25%, RSI: 63.11",
+            "2025-05-13 16:15:00 [SUI/USDT] SELL EXECUTED, Price: 4.04, Size: -91.187777, Value: $-368.63, Comm: $0.37",
+            "2025-05-13 16:15:00 [SUI/USDT] TRADE COMPLETED, Gross: 18.23, Net: 17.51",
+            "2025-05-15 05:45:00 [SUI/USDT] BUY CREATE, Price: 3.80, Size: 95.516859, Value: $362.60, RSI: 25.15, BB Lower: 3.82",
+            "2025-05-15 06:00:00 [SUI/USDT] BUY EXECUTED, Price: 3.80, Size: 95.516859, Value: $362.60, Comm: $0.36",
+            "2025-05-19 12:45:00 [SUI/USDT] STOP LOSS, Price: 3.60, Size: 95.516859, Loss: 5.19%, RSI: 27.66",
+            "2025-05-19 13:00:00 [SUI/USDT] SELL EXECUTED, Price: 3.60, Size: -95.516859, Value: $-343.77, Comm: $0.34",
+            "2025-05-19 13:00:00 [SUI/USDT] TRADE COMPLETED, Gross: -18.83, Net: -19.53",
+            "2025-05-20 12:15:00 [SUI/USDT] BUY CREATE, Price: 3.79, Size: 92.550656, Value: $351.09, RSI: 29.65, BB Lower: 3.81",
+            "2025-05-20 12:30:00 [SUI/USDT] BUY EXECUTED, Price: 3.79, Size: 92.550656, Value: $351.16, Comm: $0.35",
+            "2025-05-21 16:15:00 [SUI/USDT] TAKE PROFIT, Price: 3.99, Size: 92.550656, Profit: 5.25%, RSI: 69.54",
+            "2025-05-21 16:30:00 [SUI/USDT] SELL EXECUTED, Price: 3.99, Size: -92.550656, Value: $-369.57, Comm: $0.37",
+            "2025-05-21 16:30:00 [SUI/USDT] TRADE COMPLETED, Gross: 18.42, Net: 17.70",
+            "2025-05-22 13:00:00 [SUI/USDT] BUY CREATE, Price: 3.83, Size: 95.771131, Value: $366.56, RSI: 29.18, BB Lower: 3.87",
+            "2025-05-22 13:15:00 [SUI/USDT] BUY EXECUTED, Price: 3.83, Size: 95.771131, Value: $366.54, Comm: $0.37",
+            "2025-05-23 12:00:00 [SUI/USDT] STOP LOSS, Price: 3.60, Size: 95.771131, Loss: 6.00%, RSI: 16.90",
+            "2025-05-23 12:15:00 [SUI/USDT] SELL EXECUTED, Price: 3.60, Size: -95.771131, Value: $-344.54, Comm: $0.34",
+            "2025-05-23 12:15:00 [SUI/USDT] TRADE COMPLETED, Gross: -22.01, Net: -22.72",
+            "2025-05-23 23:30:00 [SUI/USDT] BUY CREATE, Price: 3.55, Size: 99.780495, Value: $354.38, RSI: 26.89, BB Lower: 3.58",
+            "2025-05-23 23:45:00 [SUI/USDT] BUY EXECUTED, Price: 3.55, Size: 99.780495, Value: $354.38, Comm: $0.35"
+        ],
+        "ETH/USDT": [
+            "2025-05-11 07:30:00 [ETH/USDT] BUY CREATE, Price: 2460.87, Size: 0.139904, Value: $344.29, RSI: 27.93, BB Lower: 2485.50",
+            "2025-05-11 07:45:00 [ETH/USDT] BUY EXECUTED, Price: 2461.26, Size: 0.139904, Value: $344.34, Comm: $0.34",
+            "2025-05-12 07:15:00 [ETH/USDT] TAKE PROFIT, Price: 2597.49, Size: 0.139904, Profit: 5.53%, RSI: 77.72",
+            "2025-05-12 07:30:00 [ETH/USDT] SELL EXECUTED, Price: 2597.53, Size: -0.139904, Value: $-363.40, Comm: $0.36",
+            "2025-05-12 07:30:00 [ETH/USDT] TRADE COMPLETED, Gross: 19.06, Net: 18.36",
+            "2025-05-12 18:15:00 [ETH/USDT] BUY CREATE, Price: 2442.30, Size: 0.143471, Value: $350.40, RSI: 24.78, BB Lower: 2443.99",
+            "2025-05-12 18:30:00 [ETH/USDT] BUY EXECUTED, Price: 2442.30, Size: 0.143471, Value: $350.40, Comm: $0.35",
+            "2025-05-13 15:45:00 [ETH/USDT] TAKE PROFIT, Price: 2565.43, Size: 0.143471, Profit: 5.04%, RSI: 69.34",
+            "2025-05-13 16:00:00 [ETH/USDT] SELL EXECUTED, Price: 2565.43, Size: -0.143471, Value: $-368.06, Comm: $0.37",
+            "2025-05-13 16:00:00 [ETH/USDT] TRADE COMPLETED, Gross: 17.67, Net: 16.95",
+            "2025-05-15 07:45:00 [ETH/USDT] BUY CREATE, Price: 2529.01, Size: 0.141906, Value: $358.88, RSI: 29.76, BB Lower: 2535.63",
+            "2025-05-15 08:00:00 [ETH/USDT] BUY EXECUTED, Price: 2529.01, Size: 0.141906, Value: $358.88, Comm: $0.36",
+            "2025-05-18 20:00:00 [ETH/USDT] STOP LOSS, Price: 2368.91, Size: 0.141906, Loss: 6.33%, RSI: 16.06",
+            "2025-05-18 20:15:00 [ETH/USDT] SELL EXECUTED, Price: 2368.91, Size: -0.141906, Value: $-336.16, Comm: $0.34",
+            "2025-05-18 20:15:00 [ETH/USDT] TRADE COMPLETED, Gross: -22.72, Net: -23.41",
+            "2025-05-20 12:30:00 [ETH/USDT] BUY CREATE, Price: 2485.57, Size: 0.141048, Value: $350.58, RSI: 25.86, BB Lower: 2493.12",
+            "2025-05-20 21:15:00 [ETH/USDT] BUY CREATE, Price: 2000.00, Size: 0.178314, Value: $356.63, RSI: 9.02, BB Lower: 2249.80",
+            "2025-05-20 21:30:00 [ETH/USDT] BUY EXECUTED, Price: 2506.95, Size: 0.178314, Value: $447.02, Comm: $0.45",
+            "2025-05-22 03:30:00 [ETH/USDT] TAKE PROFIT, Price: 2632.51, Size: 0.178314, Profit: 5.01%, RSI: 70.66",
+            "2025-05-22 03:45:00 [ETH/USDT] SELL EXECUTED, Price: 2632.50, Size: -0.178314, Value: $-469.41, Comm: $0.47",
+            "2025-05-22 03:45:00 [ETH/USDT] TRADE COMPLETED, Gross: 22.39, Net: 21.47",
+            "2025-05-23 11:45:00 [ETH/USDT] BUY CREATE, Price: 2559.55, Size: 0.141288, Value: $361.63, RSI: 18.91, BB Lower: 2610.51"
+        ],
+        "BTC/USDT": [
+            "2025-05-12 18:15:00 [BTC/USDT] BUY CREATE, Price: 101653.00, Size: 0.003447, Value: $350.40, RSI: 27.75, BB Lower: 101742.24",
+            "2025-05-12 18:30:00 [BTC/USDT] BUY EXECUTED, Price: 101653.00, Size: 0.003447, Value: $350.40, Comm: $0.35",
+            "2025-05-20 19:45:00 [BTC/USDT] TAKE PROFIT, Price: 107045.58, Size: 0.003447, Profit: 5.30%, RSI: 69.90",
+            "2025-05-20 20:00:00 [BTC/USDT] SELL EXECUTED, Price: 107045.58, Size: -0.003447, Value: $-368.99, Comm: $0.37",
+            "2025-05-20 20:00:00 [BTC/USDT] TRADE COMPLETED, Gross: 18.59, Net: 17.87",
+            "2025-05-22 13:45:00 [BTC/USDT] BUY CREATE, Price: 106907.39, Size: 0.003428, Value: $366.48, RSI: 19.34, BB Lower: 108869.23",
+            "2025-05-22 14:00:00 [BTC/USDT] BUY EXECUTED, Price: 110903.39, Size: 0.003428, Value: $380.18, Comm: $0.38"
+        ]
+    },
+    "trades": [
+        {
+            "symbol": "SUI/USDT",
+            "entry_time": "2025-05-09 03:45:00",
+            "entry_price": 3.8308,
+            "entry_indicators": {
+                "bb_upper": 4.087396947426288,
+                "bb_middle": 3.983695,
+                "bb_lower": 3.879993052573712,
+                "rsi": 27.612583893981224
+            },
+            "size": 86.92701263443666,
+            "executed_entry_price": 3.8287,
+            "executed_size": 86.92701263443666,
+            "executed_value": 332.81745327346766,
+            "commission": 0.3328174532734677,
+            "exit_time": "2025-05-09 08:15:00",
+            "exit_price": 4.0237,
+            "exit_indicators": {
+                "bb_upper": 4.047800185873394,
+                "bb_middle": 3.9294400000000005,
+                "bb_lower": 3.8110798141266073,
+                "rsi": 60.96217733523295
+            },
+            "profit_pct": 5.0931125447279735,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 4.0237,
+            "executed_exit_value": -349.7682207371828,
+            "exit_commission": 0.34976822073718283,
+            "realized_profit_pct": -205.09311254472794
+        },
+        {
+            "symbol": "SUI/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 16.268181789704485,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "SUI/USDT",
+            "entry_time": "2025-05-10 11:30:00",
+            "entry_price": 3.8525,
+            "entry_indicators": {
+                "bb_upper": 4.0284352502649465,
+                "bb_middle": 3.962505,
+                "bb_lower": 3.896574749735054,
+                "rsi": 26.524724973042623
+            },
+            "size": 87.84355730979146,
+            "executed_entry_price": 3.8449,
+            "executed_size": 87.84355730979146,
+            "executed_value": 337.7496935004172,
+            "commission": 0.33774969350041717,
+            "exit_time": "2025-05-10 17:30:00",
+            "exit_price": 4.0488,
+            "exit_indicators": {
+                "bb_upper": 4.040520554530362,
+                "bb_middle": 3.9753300000000005,
+                "bb_lower": 3.910139445469639,
+                "rsi": 68.8259367391608
+            },
+            "profit_pct": 5.303128819995329,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 4.0534,
+            "executed_exit_value": -356.0650751995087,
+            "exit_commission": 0.3560650751995087,
+            "realized_profit_pct": -205.42276782231008
+        },
+        {
+            "symbol": "SUI/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 17.621566930391587,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "ETH/USDT",
+            "entry_time": "2025-05-11 07:30:00",
+            "entry_price": 2460.87,
+            "entry_indicators": {
+                "bb_upper": 2580.562197413439,
+                "bb_middle": 2533.0305,
+                "bb_lower": 2485.4988025865605,
+                "rsi": 27.932466351347202
+            },
+            "size": 0.13990389021922817,
+            "executed_entry_price": 2461.26,
+            "executed_size": 0.13990389021922817,
+            "executed_value": 344.33984884097754,
+            "commission": 0.34433984884097757,
+            "exit_time": "2025-05-12 07:15:00",
+            "exit_price": 2597.49,
+            "exit_indicators": {
+                "bb_upper": 2562.7465796738325,
+                "bb_middle": 2518.9555,
+                "bb_lower": 2475.1644203261676,
+                "rsi": 77.7175829578162
+            },
+            "profit_pct": 5.534969893469177,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 2597.53,
+            "executed_exit_value": -363.40455196115175,
+            "exit_commission": 0.3634045519611518,
+            "realized_profit_pct": -205.5365950773181
+        },
+        {
+            "symbol": "ETH/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 18.356958719372088,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "ETH/USDT",
+            "entry_time": "2025-05-12 18:15:00",
+            "entry_price": 2442.3,
+            "entry_indicators": {
+                "bb_upper": 2562.3696565269615,
+                "bb_middle": 2503.1785,
+                "bb_lower": 2443.9873434730384,
+                "rsi": 24.778664351357307
+            },
+            "size": 0.143470562001942,
+            "executed_entry_price": 2442.3,
+            "executed_size": 0.143470562001942,
+            "executed_value": 350.39815357734295,
+            "commission": 0.350398153577343,
+            "exit_time": "2025-05-13 15:45:00",
+            "exit_price": 2565.43,
+            "exit_indicators": {
+                "bb_upper": 2580.2891330606003,
+                "bb_middle": 2533.2325,
+                "bb_lower": 2486.1758669394,
+                "rsi": 69.34199477338477
+            },
+            "profit_pct": 5.041559186013167,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 2565.43,
+            "executed_exit_value": -368.063683876642,
+            "exit_commission": 0.36806368387664207,
+            "realized_profit_pct": -205.04155918601316
+        },
+        {
+            "symbol": "ETH/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 16.94706846184508,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "SUI/USDT",
+            "entry_time": "2025-05-12 18:15:00",
+            "entry_price": 3.8426,
+            "entry_indicators": {
+                "bb_upper": 4.101220952432959,
+                "bb_middle": 3.9725499999999996,
+                "bb_lower": 3.8438790475670404,
+                "rsi": 26.79352001695115
+            },
+            "size": 91.18777743646045,
+            "executed_entry_price": 3.8426000000000005,
+            "executed_size": 91.18777743646045,
+            "executed_value": 350.39815357734295,
+            "commission": 0.35039815357734294,
+            "exit_time": "2025-05-13 16:00:00",
+            "exit_price": 4.0445,
+            "exit_indicators": {
+                "bb_upper": 4.040346436149433,
+                "bb_middle": 3.9905250000000003,
+                "bb_lower": 3.940703563850568,
+                "rsi": 63.10616472093516
+            },
+            "profit_pct": 5.254254931556757,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 4.0425,
+            "executed_exit_value": -368.6265902868914,
+            "exit_commission": 0.3686265902868914,
+            "realized_profit_pct": -205.20220683911933
+        },
+        {
+            "symbol": "SUI/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 17.509411965684205,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "ETH/USDT",
+            "entry_time": "2025-05-15 07:45:00",
+            "entry_price": 2529.01,
+            "entry_indicators": {
+                "bb_upper": 2610.8793509843867,
+                "bb_middle": 2573.2525,
+                "bb_lower": 2535.6256490156134,
+                "rsi": 29.76116589151708
+            },
+            "size": 0.1419061336976408,
+            "executed_entry_price": 2529.01,
+            "executed_size": 0.1419061336976408,
+            "executed_value": 358.8820311826706,
+            "commission": 0.35888203118267054,
+            "exit_time": "2025-05-18 20:00:00",
+            "exit_price": 2368.91,
+            "exit_indicators": {
+                "bb_upper": 2630.473387186954,
+                "bb_middle": 2506.9505,
+                "bb_lower": 2383.427612813046,
+                "rsi": 16.055264250132993
+            },
+            "loss_pct": 6.330540409092899,
+            "exit_reason": "STOP_LOSS",
+            "executed_exit_price": 2368.91,
+            "executed_exit_value": -336.16285917767823,
+            "exit_commission": 0.33616285917767824,
+            "realized_profit_pct": -193.66945959090708
+        },
+        {
+            "symbol": "ETH/USDT",
+            "pnl_pct": 0,
+            "net_pnl": -23.414216895352695,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "SUI/USDT",
+            "entry_time": "2025-05-15 05:45:00",
+            "entry_price": 3.7962,
+            "entry_indicators": {
+                "bb_upper": 3.91203565100355,
+                "bb_middle": 3.865415,
+                "bb_lower": 3.81879434899645,
+                "rsi": 25.153265009494888
+            },
+            "size": 95.5168593435414,
+            "executed_entry_price": 3.7962,
+            "executed_size": 95.5168593435414,
+            "executed_value": 362.60110143995183,
+            "commission": 0.36260110143995183,
+            "exit_time": "2025-05-19 12:45:00",
+            "exit_price": 3.599,
+            "exit_indicators": {
+                "bb_upper": 3.718293925238169,
+                "bb_middle": 3.66348,
+                "bb_lower": 3.608666074761831,
+                "rsi": 27.66242208827387
+            },
+            "loss_pct": 5.194668352563081,
+            "exit_reason": "STOP_LOSS",
+            "executed_exit_price": 3.5991,
+            "executed_exit_value": -343.77472846333984,
+            "exit_commission": 0.34377472846333984,
+            "realized_profit_pct": -194.80796586059745
+        },
+        {
+            "symbol": "SUI/USDT",
+            "pnl_pct": 0,
+            "net_pnl": -19.532748806515283,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "BTC/USDT",
+            "entry_time": "2025-05-12 18:15:00",
+            "entry_price": 101653.0,
+            "entry_indicators": {
+                "bb_upper": 104152.89745690765,
+                "bb_middle": 102947.571,
+                "bb_lower": 101742.24454309234,
+                "rsi": 27.753343336180393
+            },
+            "size": 0.0034470025830751964,
+            "executed_entry_price": 101653.0,
+            "executed_size": 0.0034470025830751964,
+            "executed_value": 350.39815357734295,
+            "commission": 0.35039815357734294,
+            "exit_time": "2025-05-20 19:45:00",
+            "exit_price": 107045.58,
+            "exit_indicators": {
+                "bb_upper": 106914.14079182468,
+                "bb_middle": 105740.196,
+                "bb_lower": 104566.25120817531,
+                "rsi": 69.902678539966
+            },
+            "profit_pct": 5.304890165563236,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 107045.57999999999,
+            "executed_exit_value": -368.98639076678256,
+            "exit_commission": 0.3689863907667826,
+            "realized_profit_pct": -205.30489016556322
+        },
+        {
+            "symbol": "BTC/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 17.868852645095522,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "SUI/USDT",
+            "entry_time": "2025-05-20 12:15:00",
+            "entry_price": 3.7935,
+            "entry_indicators": {
+                "bb_upper": 3.8885131041711785,
+                "bb_middle": 3.84747,
+                "bb_lower": 3.8064268958288214,
+                "rsi": 29.64532246574744
+            },
+            "size": 92.5506558270622,
+            "executed_entry_price": 3.7942,
+            "executed_size": 92.5506558270622,
+            "executed_value": 351.1556983390394,
+            "commission": 0.3511556983390394,
+            "exit_time": "2025-05-21 16:15:00",
+            "exit_price": 3.9933,
+            "exit_indicators": {
+                "bb_upper": 3.9957321877347853,
+                "bb_middle": 3.92607,
+                "bb_lower": 3.856407812265215,
+                "rsi": 69.53709978501341
+            },
+            "profit_pct": 5.247483000368991,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 3.9932000000000003,
+            "executed_exit_value": -369.5732788486248,
+            "exit_commission": 0.3695732788486248,
+            "realized_profit_pct": -205.24484739866114
+        },
+        {
+            "symbol": "SUI/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 17.696851532397698,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "ETH/USDT",
+            "entry_time": "2025-05-20 21:15:00",
+            "entry_price": 2000.0,
+            "entry_indicators": {
+                "bb_upper": 2681.6060336508604,
+                "bb_middle": 2465.7015,
+                "bb_lower": 2249.79696634914,
+                "rsi": 9.023111734665378
+            },
+            "size": 0.17831396049894757,
+            "executed_entry_price": 2506.95,
+            "executed_size": 0.17831396049894757,
+            "executed_value": 447.0241832728366,
+            "commission": 0.4470241832728366,
+            "exit_time": "2025-05-22 03:30:00",
+            "exit_price": 2632.51,
+            "exit_indicators": {
+                "bb_upper": 2624.409352875766,
+                "bb_middle": 2578.8765,
+                "bb_lower": 2533.3436471242335,
+                "rsi": 70.6629456940703
+            },
+            "profit_pct": 5.008476435509301,
+            "exit_reason": "TAKE_PROFIT",
+            "executed_exit_price": 2632.5,
+            "executed_exit_value": -469.4115010134795,
+            "exit_commission": 0.4694115010134795,
+            "realized_profit_pct": -205.00807754442647
+        },
+        {
+            "symbol": "ETH/USDT",
+            "pnl_pct": 0,
+            "net_pnl": 21.470882056356583,
+            "entry_time": null,
+            "exit_time": null
+        },
+        {
+            "symbol": "SUI/USDT",
+            "entry_time": "2025-05-22 13:00:00",
+            "entry_price": 3.8275,
+            "entry_indicators": {
+                "bb_upper": 4.277413391375881,
+                "bb_middle": 4.0722000000000005,
+                "bb_lower": 3.8669866086241194,
+                "rsi": 29.17894416125442
+            },
+            "size": 95.77113133817379,
+            "executed_entry_price": 3.8273,
+            "executed_size": 95.77113133817379,
+            "executed_value": 366.54485097059256,
+            "commission": 0.3665448509705926,
+            "exit_time": "2025-05-23 12:00:00",
+            "exit_price": 3.5975,
+            "exit_indicators": {
+                "bb_upper": 3.962754316301124,
+                "bb_middle": 3.8369500000000003,
+                "bb_lower": 3.7111456836988768,
+                "rsi": 16.899134132065782
+            },
+            "loss_pct": 6.004232748935278,
+            "exit_reason": "STOP_LOSS",
+            "executed_exit_price": 3.5975,
+            "executed_exit_value": -344.53664498908023,
+            "exit_commission": 0.3445366449890802,
+            "realized_profit_pct": -193.9957672510647
+        },
+        {
+            "symbol": "SUI/USDT",
+            "pnl_pct": 0,
+            "net_pnl": -22.719287477472008,
+            "entry_time": null,
+            "exit_time": null
+        }
+    ],
+    "summary_metrics": {
+        "initial_cash": 1000.0,
+        "final_value": 1079.2329712868798,
+        "total_return_pct": 7.923297128687978,
+        "sharpe_ratio": null,
+        "max_drawdown_pct": 6.951125055986202,
+        "total_trades_analyzer": 13,
+        "win_rate_analyzer_pct": 61.53846153846154,
+        "wins_analyzer": 8,
+        "losses_analyzer": 3,
+        "avg_trade_pnl_pct_strat": 0.0,
+        "sum_pnl_pct_strat": 0.0,
+        "total_trades_strat": 22,
+        "winning_trades_strat": 8,
+        "losing_trades_strat": 3,
+        "buy_signals": 15,
+        "sell_signals": 11
+    }
+}

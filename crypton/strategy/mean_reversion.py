@@ -49,7 +49,37 @@ class MeanReversionStrategy:
         self.take_profit_pct = self.config.get('risk', {}).get('take_profit_pct', 0.02)  # 2% profit target
         
         # Cool-down period for trades (to avoid overtrading)
-        self.cool_down_hours = self.config.get('cool_down', {}).get('hours', 4)
+        cool_down_value = self.config.get('cool_down', {}).get('hours', 4)
+        # Support for time interval formats like '15m'
+        self.cool_down_hours = 0
+        self.cool_down_minutes = 0
+        
+        if isinstance(cool_down_value, str):
+            if cool_down_value.endswith('m'):
+                try:
+                    self.cool_down_minutes = int(cool_down_value.rstrip('m'))
+                    logger.info(f"Cool-down set to {self.cool_down_minutes} minutes")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    self.cool_down_hours = 4
+            elif cool_down_value.endswith('h'):
+                try:
+                    self.cool_down_hours = int(cool_down_value.rstrip('h'))
+                    logger.info(f"Cool-down set to {self.cool_down_hours} hours")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    self.cool_down_hours = 4
+            else:
+                try:
+                    # Assume hours if no unit is specified
+                    self.cool_down_hours = float(cool_down_value)
+                    logger.info(f"Cool-down set to {self.cool_down_hours} hours")
+                except ValueError:
+                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                    self.cool_down_hours = 4
+        else:
+            # If a numeric value, assume it's hours
+            self.cool_down_hours = float(cool_down_value)
         
         # Track last trade time per symbol
         self.last_trade_time: Dict[str, datetime] = {}
@@ -61,7 +91,10 @@ class MeanReversionStrategy:
         logger.info(f"  RSI oversold: {self.rsi_oversold}")
         logger.info(f"  RSI overbought: {self.rsi_overbought}")
         logger.info(f"  Take profit: {self.take_profit_pct * 100:.1f}%")
-        logger.info(f"  Cool-down period: {self.cool_down_hours} hours")
+        if self.cool_down_minutes > 0:
+            logger.info(f"  Cool-down period: {self.cool_down_minutes} minutes")
+        else:
+            logger.info(f"  Cool-down period: {self.cool_down_hours} hours")
     
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -122,7 +155,7 @@ class MeanReversionStrategy:
             
             if last_trade:
                 time_since_last_trade = current_time - last_trade
-                in_cooldown = time_since_last_trade < timedelta(hours=self.cool_down_hours)
+                in_cooldown = time_since_last_trade < timedelta(hours=self.cool_down_hours, minutes=self.cool_down_minutes)
                 if in_cooldown:
                     logger.info(f"{symbol} is in cool-down period. {time_since_last_trade.total_seconds() / 3600:.2f} hours since last trade.")
             
@@ -255,7 +288,7 @@ class MeanReversionStrategy:
                     
                     # Check cool-down period
                     last_trade = self.last_trade_time.get(symbol)
-                    if not last_trade or (current_time - last_trade) >= timedelta(hours=self.cool_down_hours):
+                    if not last_trade or (current_time - last_trade) >= timedelta(hours=self.cool_down_hours, minutes=self.cool_down_minutes):
                         df.at[df.index[i], 'signal'] = SignalType.BUY.value
                         self.last_trade_time[symbol] = current_time
                 
@@ -265,7 +298,7 @@ class MeanReversionStrategy:
                     
                     # Check cool-down period
                     last_trade = self.last_trade_time.get(symbol)
-                    if not last_trade or (current_time - last_trade) >= timedelta(hours=self.cool_down_hours):
+                    if not last_trade or (current_time - last_trade) >= timedelta(hours=self.cool_down_hours, minutes=self.cool_down_minutes):
                         df.at[df.index[i], 'signal'] = SignalType.SELL.value
                         self.last_trade_time[symbol] = current_time
                 
