@@ -36,9 +36,111 @@ def setup_environment():
     logger.info("Environment initialized")
 
 
+def run_portfolio_backtest(config_path: Optional[str] = None):
+    """
+    Run portfolio backtesting with historical data for multiple symbols simultaneously.
+    This approach treats all symbols as a single portfolio, allowing for capital allocation
+    and reinvestment across symbols.
+    
+    Args:
+        config_path: Path to configuration file
+    """
+    logger.info("Starting portfolio backtest")
+    
+    # Load configuration
+    config = load_config(config_path)
+    
+    # Get symbols and initial cash
+    symbols = config.get('symbols', ['BTC/USDT', 'ETH/USDT', 'SUI/USDT'])
+    initial_cash = config.get('initial_cash', 1000.0)
+    
+    # Create data fetcher
+    data_fetcher = DataFetcher(testnet=True)
+    
+    # Create backtest harness
+    backtest_harness = BacktestHarness(config)
+    
+    # Load backtest config for time period
+    backtest_config = config.get('backtest', {})
+    if 'start_date' in backtest_config:
+        try:
+            since = datetime.strptime(backtest_config['start_date'], '%Y-%m-%d')
+            logger.info(f"Using start_date from config: {since}")
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid start_date in config, using default. Error: {e}")
+            since = datetime.now() - timedelta(days=30)  # Default to last 30 days
+    else:
+        since = datetime.now() - timedelta(days=30)  # Default to last 30 days
+    
+    # Get end_date from config if provided
+    end_date = None
+    if 'end_date' in backtest_config:
+        try:
+            end_date = datetime.strptime(backtest_config['end_date'], '%Y-%m-%d')
+            logger.info(f"Using end_date from config: {end_date}")
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid end_date in config, using default (current time). Error: {e}")
+    
+    # Calculate approximate number of candles needed
+    timeframe = config.get('interval', '15m')
+    days_between = 30  # Default
+    if end_date:
+        days_between = (end_date - since).days
+    
+    # Determine limit based on timeframe and days
+    limit = 1000  # Default
+    if days_between > 10:
+        # Approximately calculate needed candles
+        if timeframe == '15m':
+            candles_needed = 4 * 24 * days_between
+        elif timeframe == '1h':
+            candles_needed = 24 * days_between
+        elif timeframe == '4h':
+            candles_needed = 6 * days_between
+        elif timeframe == '1d':
+            candles_needed = days_between
+        else:
+            candles_needed = 1000
+        
+        limit = min(candles_needed, 1000)  # Most APIs limit to 1000
+    
+    # Fetch data for all symbols
+    symbol_data_dict = {}
+    for symbol in symbols:
+        logger.info(f"Fetching data for {symbol}")
+        df = data_fetcher.get_historical_ohlcv(
+            symbol=symbol,
+            timeframe=timeframe,
+            since=since,
+            limit=limit
+        )
+        
+        if df.empty:
+            logger.error(f"No historical data available for {symbol}")
+            continue
+            
+        symbol_data_dict[symbol] = df
+    
+    if not symbol_data_dict:
+        logger.error("No data available for any symbol. Aborting portfolio backtest.")
+        return {}
+    
+    # Run portfolio backtest
+    logger.info(f"Running portfolio backtest with {len(symbol_data_dict)} symbols")
+    strategy, metrics = backtest_harness.run_portfolio_backtest(
+        symbol_data_dict=symbol_data_dict,
+        initial_cash=initial_cash,
+        commission=0.001
+    )
+    
+    logger.info(f"Portfolio backtest completed with final value: ${metrics['final_value']:.2f}")
+    logger.info(f"Total return: {metrics['total_return_pct']:.2f}%")
+    
+    return metrics
+
 def run_backtest(config_path: Optional[str] = None):
     """
-    Run backtesting with historical data.
+    Run backtesting with historical data for individual symbols separately.
     
     Args:
         config_path: Path to configuration file
@@ -60,14 +162,68 @@ def run_backtest(config_path: Optional[str] = None):
         logger.info(f"Running backtest for {symbol}")
         
         # Fetch historical data
-        since = datetime.now() - timedelta(days=30)  # Default to last 30 days
+        # Use backtest config for start_date if provided, otherwise default to last 30 days
+        backtest_config = config.get('backtest', {})
+        if 'start_date' in backtest_config:
+            try:
+                since = datetime.strptime(backtest_config['start_date'], '%Y-%m-%d')
+                logger.info(f"Using start_date from config: {since}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid start_date in config, using default. Error: {e}")
+                since = datetime.now() - timedelta(days=30)  # Default to last 30 days
+        else:
+            since = datetime.now() - timedelta(days=30)  # Default to last 30 days
+        
+        # Get end_date from config if provided
+        end_date = None
+        if 'end_date' in backtest_config:
+            try:
+                end_date = datetime.strptime(backtest_config['end_date'], '%Y-%m-%d')
+                logger.info(f"Using end_date from config: {end_date}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid end_date in config, using default (current time). Error: {e}")
+        
         timeframe = config.get('interval', '15m')
         
+        # Za duže periode ćemo možda morati da preuzimamo podatke u delovima
+        # Proveravamo koliko dana ima između start_date i end_date
+        # Za interval od 15 minuta, 1000 sveća pokriva oko 10 dana
+        # Napomena: Za produkciju bi trebalo implementirati paging u DataFetcher-u
+        
+        if end_date is not None:
+            days_between = (end_date - since).days
+            logger.info(f"Backtest period: {days_between} days from {since} to {end_date}")
+            
+            # Ako je period duži od 10 dana, povećajmo limit
+            if days_between > 10:
+                # Proračun aproksimativnog broja sveća potrebnih
+                # Za 15m interval: 4 sveće po satu × 24 sata × broj dana
+                if timeframe == '15m':
+                    candles_needed = 4 * 24 * days_between
+                elif timeframe == '1h':
+                    candles_needed = 24 * days_between
+                elif timeframe == '4h':
+                    candles_needed = 6 * days_between
+                elif timeframe == '1d':
+                    candles_needed = days_between
+                else:
+                    candles_needed = 1000  # Default
+                
+                # Ograničimo na maksimum koji API dozvoljava
+                limit = min(candles_needed, 1000)  # Većina API-ja ima limit od 1000
+                logger.info(f"Setting limit to {limit} candles for extended period")
+            else:
+                limit = 1000
+        else:
+            limit = 1000
+            logger.info(f"Using default limit of {limit} candles")
+        
+        # Preuzimanje podataka
         df = data_fetcher.get_historical_ohlcv(
             symbol=symbol,
             timeframe=timeframe,
             since=since,
-            limit=1000
+            limit=limit
         )
         
         if df.empty:
@@ -75,7 +231,7 @@ def run_backtest(config_path: Optional[str] = None):
             continue
         
         # Run backtest
-        strategy, metrics = backtest_harness.run_backtest(df)
+        strategy, metrics = backtest_harness.run_backtest(symbol, timeframe, df)
         
         # Check if backtest was successful
         if strategy is None or metrics is None:
@@ -331,31 +487,28 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Crypton - Crypto Trading Bot")
     
-    # Create subparsers for different commands
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+    # Add positional argument for mode
+    parser.add_argument('mode', choices=['backtest', 'portfolio', 'paper', 'live'],
+                      help='Mode: backtest (separate symbol backtesting), portfolio (multi-symbol portfolio backtest), paper (paper trading), live (live trading)')
     
-    # Backtest command
-    backtest_parser = subparsers.add_parser("backtest", help="Run backtesting")
-    backtest_parser.add_argument("--config", help="Path to configuration file")
-    
-    # Trade command
-    trade_parser = subparsers.add_parser("trade", help="Run trading")
-    trade_parser.add_argument("--mode", choices=["test", "live"], default="test", help="Trading mode")
-    trade_parser.add_argument("--config", help="Path to configuration file")
+    # Add optional argument for config file
+    parser.add_argument('--config', type=str, default='config.yml',
+                      help='Path to configuration file')
     
     # Parse arguments
     args = parser.parse_args()
     
-    # Execute command
-    if args.command == "backtest":
+    # Run in selected mode
+    if args.mode == 'backtest':
         run_backtest(args.config)
-    elif args.command == "trade":
-        if args.mode == "test":
-            run_paper_trade(args.config)
-        elif args.mode == "live":
-            run_live_trade(args.config)
+    elif args.mode == 'portfolio':
+        run_portfolio_backtest(args.config)
+    elif args.mode == 'paper':
+        run_paper_trade(args.config)
+    elif args.mode == 'live':
+        run_live_trade(args.config)
     else:
-        parser.print_help()
+        logger.error(f"Unknown mode: {args.mode}")
 
 
 if __name__ == "__main__":

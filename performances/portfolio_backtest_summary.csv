@@ -1,0 +1,5 @@
+symbols,initial_cash,commission,bb_length,bb_std,rsi_length,rsi_oversold,rsi_overbought,stop_loss_pct,take_profit_pct,position_size_pct,cool_down_hours,final_value,total_return_pct,sharpe_ratio,max_drawdown_pct,total_trades_analyzer,win_rate_analyzer_pct,wins_analyzer,losses_analyzer,avg_trade_pnl_pct_strat,sum_pnl_pct_strat,total_trades_strat,winning_trades_strat,losing_trades_strat,buy_signals,sell_signals
+"BTC/USDT,ETH/USDT,SUI/USDT",1000.0,0.001,20,2,14,30,70,0.02,0.02,0.02,1,1002.8523913107366,0.2852391310736557,,0.09657532336837212,11,81.81818181818183,9,2,0.0,0.0,22,9,2,11,11
+"BTC/USDT,ETH/USDT,SUI/USDT",1000.0,0.001,20,2,14,30,70,0.02,0.02,0.333,1,1048.1296942621443,4.812969426214431,,1.6002821455348089,11,81.81818181818183,9,2,0.0,0.0,22,9,2,11,11
+"BTC/USDT,ETH/USDT,SUI/USDT",1000.0,0.001,20,2,14,30,70,0.02,0.02,0.333,1,1048.1296942621443,4.812969426214431,,1.6002821455348089,11,81.81818181818183,9,2,0.0,0.0,22,9,2,11,11
+"BTC/USDT,ETH/USDT,SUI/USDT",1000.0,0.001,20,2,14,30,70,0.02,0.02,0.333,1,1048.1296942621443,4.812969426214431,,1.6002821455348089,11,81.81818181818183,9,2,0.0,0.0,22,9,2,11,11

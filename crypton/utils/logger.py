@@ -35,16 +35,18 @@ def setup_logger(
     # Get log level from environment if not provided
     log_level = log_level or os.getenv("LOG_LEVEL", "INFO")
     
+    # Temporarily force non-JSON format for debugging
+    current_json_format = False
+    
     # Define format based on preference
-    if json_format:
+    if current_json_format:
         log_format = lambda record: json.dumps({
             "timestamp": record["time"].isoformat(),
             "level": record["level"].name,
             "message": record["message"],
             "module": record["name"],
             "function": record["function"],
-            "line": record["line"],
-            "extra": record["extra"]
+            "line": record["line"]
         }) + "\n"
     else:
         log_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
@@ -54,7 +56,7 @@ def setup_logger(
         sys.stderr,
         format=log_format,
         level=log_level,
-        colorize=not json_format
+        colorize=not current_json_format
     )
     
     # Add file logger if specified
@@ -67,7 +69,7 @@ def setup_logger(
             retention="7 days"
         )
     
-    logger.info(f"Logger initialized with level={log_level}, json_format={json_format}")
+    logger.info(f"Logger initialized with level={log_level}, json_format={current_json_format}")
 
 
 class SlackNotifier:
