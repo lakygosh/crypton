@@ -79,8 +79,43 @@ class IndicatorEngine:
                 std=std
             )
             
+            # Check what columns are returned
+            logger.debug(f"BBands result columns: {bb_result.columns.tolist()}")
+            
+            # Explicitly rename columns to what our strategy expects
+            # pandas_ta typically returns: BBL_x, BBM_x, BBU_x where x is the length
+            expected_prefix = f"BBL_{length}"
+            
+            # Create a mapping of original column names to required column names
+            column_mapping = {}
+            for col in bb_result.columns:
+                if col.startswith(f"BBL_"):
+                    column_mapping[col] = "BBL"
+                elif col.startswith(f"BBM_"):
+                    column_mapping[col] = "BBM"
+                elif col.startswith(f"BBU_"):
+                    column_mapping[col] = "BBU"
+            
+            # Rename columns if needed
+            if column_mapping:
+                bb_result = bb_result.rename(columns=column_mapping)
+                logger.debug(f"Renamed BBands columns to: {bb_result.columns.tolist()}")
+            
+            # If BBL, BBM, BBU are still not in the columns, calculate manually
+            if "BBL" not in bb_result.columns or "BBU" not in bb_result.columns:
+                logger.warning("pandas_ta BBands did not return expected columns, calculating manually")
+                # Manual calculation of Bollinger Bands
+                ma = df[source_column].rolling(window=length).mean()
+                std_dev = df[source_column].rolling(window=length).std()
+                
+                # Create a new DataFrame with proper column names
+                bb_result = pd.DataFrame({
+                    "BBL": ma - std * std_dev,
+                    "BBM": ma,
+                    "BBU": ma + std * std_dev
+                })
+            
             # Merge with original dataframe
-            # BBL = lower band, BBM = middle band, BBU = upper band
             df = pd.concat([df, bb_result], axis=1)
             
             logger.debug(f"Added Bollinger Bands (length={length}, std={std})")

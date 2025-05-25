@@ -21,17 +21,53 @@ from crypton.data.fetcher import DataFetcher
 from crypton.execution.order_manager import ExecutionEngine, OrderSide
 from crypton.strategy.mean_reversion import MeanReversionStrategy, SignalType
 from crypton.utils.config import load_config
-from crypton.utils.logger import SlackNotifier, setup_logger
+from crypton.utils.logger import setup_logger
+from crypton.utils.notify import notify_trade_execution, notify_trade_completed, notify_error, discord, slack
+from crypton.utils.debug import ensure_indicator_columns, debug_dataframe
 
 
-def setup_environment():
+def setup_environment(config_path: Optional[str] = None):
     """Initialize environment variables and logger."""
     # Load environment variables from .env file
     load_dotenv()
     
-    # Set up logging
+    # Kreiraj logs direktorijum ako ne postoji
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    # Kreiraj log fajl sa vremenskim žigom
+    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file = os.path.join(logs_dir, f"crypton_{current_time}.log")
+    
+    # Load configuration if provided to check for debug_mode
+    debug_mode = False
+    if config_path:
+        config = load_config(config_path)
+        debug_mode = config.get('debug_mode', False)
+    
+    # Set up logging with file
     log_level = os.getenv("LOG_LEVEL", "INFO")
-    setup_logger(log_level=log_level)
+    setup_logger(log_level=log_level, debug_mode=debug_mode, log_file=log_file)
+    
+    logger.info(f"Logging to file: {log_file}")
+    
+    # Notifikatori su već inicijalizovani u notify.py
+    # Samo ćemo ažurirati webhook URL-ove ako su definisani
+    webhook_url = os.getenv("DISCORD_WEBHOOK")
+    if webhook_url:
+        try:
+            discord.webhook_url = webhook_url
+            discord.enabled = True
+        except Exception as e:
+            logger.error(f"Failed to set Discord webhook URL: {e}")
+            
+    slack_webhook = os.getenv("SLACK_WEBHOOK")
+    if slack_webhook and "your_webhook_url" not in slack_webhook:
+        try:
+            slack.webhook_url = slack_webhook
+            slack.enabled = True
+        except Exception as e:
+            logger.error(f"Failed to set Slack webhook URL: {e}")
     
     logger.info("Environment initialized")
 
@@ -137,6 +173,7 @@ def run_portfolio_backtest(config_path: Optional[str] = None):
     logger.info(f"Total return: {metrics['total_return_pct']:.2f}%")
     
     return metrics
+
 
 def run_backtest(config_path: Optional[str] = None):
     """
@@ -254,15 +291,6 @@ def run_backtest(config_path: Optional[str] = None):
         
         # Store results
         results[symbol] = metrics
-        
-        # Generate report
-        report_path = os.path.join(
-            Path.cwd(),
-            f"backtest_report_{symbol.replace('/', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        )
-        backtest_harness.generate_report(strategy, metrics, report_path)
-        
-        logger.info(f"Backtest report generated: {report_path}")
     
     # Log combined results
     logger.info(f"Backtest completed for all symbols: {list(results.keys())}")
@@ -282,72 +310,91 @@ def run_paper_trade(config_path: Optional[str] = None):
     # Load configuration
     config = load_config(config_path)
     
-    # Create components
+    # Create components - koristimo posebne testnet API ključeve
     data_fetcher = DataFetcher(testnet=True)
     strategy = MeanReversionStrategy(config)
     execution = ExecutionEngine(testnet=True)
     
-    # Set up Slack notifications
-    slack = SlackNotifier()
-    
     # Main trading loop
+    # --- Optimizacija: čuvaj istoriju i samo dodaj novu sveću u svakom ciklusu ---
+    symbol_data = {}
+    for symbol in config.get('symbols', ['SUI/USDT']):
+        logger.info(f"Initial fetch for {symbol}")
+        df = data_fetcher.get_historical_ohlcv(
+            symbol=symbol,
+            timeframe=config.get('interval', '15m'),
+            limit=100
+        )
+        if df.empty:
+            logger.error(f"No data available for {symbol} on initial fetch")
+            symbol_data[symbol] = pd.DataFrame()
+        else:
+            symbol_data[symbol] = df.copy()
     try:
         while True:
             for symbol in config.get('symbols', ['SUI/USDT']):
                 logger.info(f"Processing {symbol}")
-                
-                # Fetch recent data
-                df = data_fetcher.get_historical_ohlcv(
-                    symbol=symbol,
-                    timeframe=config.get('interval', '15m'),
-                    limit=100
-                )
-                
+                df = symbol_data[symbol]
                 if df.empty:
                     logger.error(f"No data available for {symbol}")
                     continue
+                # Povuci samo najnoviju sveću
+                last_timestamp = df['timestamp'].max() if not df.empty else None
                 
+                # Dodaj mali buffer da bismo sigurno dobili nove sveće (1 minut)
+                since_time = None
+                if last_timestamp is not None:
+                    # Konvertuj pandas timestamp u datetime i dodaj mali offset da izbegnemo duple podatke
+                    since_time = last_timestamp.to_pydatetime() - timedelta(minutes=1)
+                    logger.info(f"Fetching new candles for {symbol} since {since_time}")
+                
+                new_df = data_fetcher.get_historical_ohlcv(
+                    symbol=symbol,
+                    timeframe=config.get('interval', '15m'),
+                    since=since_time,  # Počni od poslednjeg timestamp-a
+                    limit=5  # Dovoljno za nekoliko novih sveća
+                )
+                if not new_df.empty:
+                    # Dodaj samo nove sveće
+                    latest = new_df[new_df['timestamp'] > last_timestamp] if last_timestamp is not None else new_df
+                    if not latest.empty:
+                        df = pd.concat([df, latest], ignore_index=True)
+                        # Ograniči dužinu DataFrame-a na 100
+                        df = df.sort_values('timestamp').reset_index(drop=True)
+                        if len(df) > 100:
+                            df = df.iloc[-100:]
+                        symbol_data[symbol] = df
                 # Check for signals
                 signal, price, data = strategy.check_for_signal(df, symbol)
-                
                 # Execute trades based on signals
                 if signal == SignalType.BUY:
-                    # Calculate position size
                     quantity, notional = execution.calculate_position_size(symbol, price)
-                    
-                    # Place order
                     order = execution.place_market_order(
                         symbol=symbol,
                         side=OrderSide.BUY,
                         quantity=quantity
                     )
-                    
                     if order:
                         logger.info(f"Executed BUY order for {symbol}: {quantity} @ {price}")
-                        slack.notify_trade(
+                        notify_trade_execution(
                             symbol=symbol,
                             side="BUY",
                             price=price,
                             quantity=quantity,
                             order_id=order.get("orderId")
                         )
-                
                 elif signal == SignalType.SELL:
-                    # Get current position size
                     positions = execution.open_positions
                     if symbol in positions:
                         quantity = positions[symbol]["quantity"]
-                        
-                        # Place order
                         order = execution.place_market_order(
                             symbol=symbol,
                             side=OrderSide.SELL,
                             quantity=quantity
                         )
-                        
                         if order:
                             logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price}")
-                            slack.notify_trade(
+                            notify_trade_execution(
                                 symbol=symbol,
                                 side="SELL",
                                 price=price,
@@ -356,18 +403,13 @@ def run_paper_trade(config_path: Optional[str] = None):
                             )
                     else:
                         logger.warning(f"SELL signal for {symbol} but no open position")
-            
-            # Sleep between iterations
             logger.info("Sleeping before next iteration...")
-            time.sleep(60 * 15)  # 15 minutes
-            
+            time.sleep(60 * 15)  # 15 minuta
     except KeyboardInterrupt:
         logger.info("Paper trading stopped by user")
     except Exception as e:
-        logger.error(f"Error in paper trading: {e}")
-        slack.notify_error(f"Paper trading error: {e}")
+        notify_error(f"Paper trading error: {e}")
     finally:
-        # Clean up
         data_fetcher.stop_all_streams()
         logger.info("Paper trading ended")
 
@@ -389,68 +431,116 @@ def run_live_trade(config_path: Optional[str] = None):
     strategy = MeanReversionStrategy(config)
     execution = ExecutionEngine(testnet=False)  # Use real API
     
-    # Set up Slack notifications
-    slack = SlackNotifier()
+    # Daily loss tracking
+    daily_loss_cap = config.get('risk', {}).get('daily_loss_cap', 0.05)  # 5% default
+    day_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    starting_balance = execution.get_account_balance()
+    daily_low_balance = starting_balance
     
-    # Confirm with user
-    print("WARNING: You are about to start live trading with real funds.")
-    print("This will execute real trades on your Binance account.")
-    confirmation = input("Type 'CONFIRM' to continue or anything else to abort: ")
+    # Setup WebSocket connections for live price updates
+    for symbol in config.get('symbols', ['SUI/USDT']):
+        formatted_symbol = symbol.replace('/', '')
+        data_fetcher.start_live_kline_stream(formatted_symbol, config.get('interval', '15m'))
     
-    if confirmation != "CONFIRM":
-        logger.info("Live trading aborted by user")
-        return
+    # Initialize data storage
+    symbol_data = {}
     
-    # Send notification
-    slack.send_message(":rotating_light: *LIVE TRADING STARTED* :rotating_light:")
-    
-    # Main trading loop - same as paper trading but with real money
+    # Main trading loop
     try:
         while True:
+            # Reset daily loss tracking at midnight
+            now = datetime.now()
+            if now.date() > day_start.date():
+                day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                starting_balance = execution.get_account_balance()
+                daily_low_balance = starting_balance
+                logger.info(f"New trading day started. Starting balance: ${starting_balance:.2f}")
+            
             for symbol in config.get('symbols', ['SUI/USDT']):
                 logger.info(f"Processing {symbol}")
                 
-                # Fetch recent data
-                df = data_fetcher.get_historical_ohlcv(
-                    symbol=symbol,
-                    timeframe=config.get('interval', '15m'),
-                    limit=100
-                )
-                
-                if df.empty:
-                    logger.error(f"No data available for {symbol}")
-                    continue
+                # Fetch latest data if not in cache
+                if symbol not in symbol_data or symbol_data[symbol].empty:
+                    df = data_fetcher.get_historical_ohlcv(
+                        symbol=symbol,
+                        timeframe=config.get('interval', '15m'),
+                        limit=100
+                    )
+                    if df.empty:
+                        logger.error(f"No data available for {symbol}")
+                        continue
+                    symbol_data[symbol] = df
+                else:
+                    # Update with latest candle
+                    df = symbol_data[symbol]
+                    latest_time = df['timestamp'].max()
+                    
+                    # Calculate time since last candle
+                    current_time = datetime.now()
+                    time_diff = (current_time - latest_time.to_pydatetime()).total_seconds() / 60  # minutes
+                    
+                    # Only fetch new data if it's been long enough for a new candle
+                    timeframe_mins = int(config.get('interval', '15m')[:-1])
+                    if time_diff >= timeframe_mins:
+                        # Fetch only new candles
+                        since_time = latest_time.to_pydatetime() - timedelta(minutes=1)  # Small buffer
+                        new_df = data_fetcher.get_historical_ohlcv(
+                            symbol=symbol,
+                            timeframe=config.get('interval', '15m'),
+                            since=since_time,
+                            limit=5  # Just a few recent candles
+                        )
+                        
+                        if not new_df.empty:
+                            # Add only new candles
+                            new_df = new_df[new_df['timestamp'] > latest_time]
+                            if not new_df.empty:
+                                df = pd.concat([df, new_df], ignore_index=True)
+                                # Keep dataframe size manageable
+                                df = df.sort_values('timestamp').tail(100).reset_index(drop=True)
+                                symbol_data[symbol] = df
+                                logger.info(f"Added {len(new_df)} new candles for {symbol}")
                 
                 # Check for signals
                 signal, price, data = strategy.check_for_signal(df, symbol)
                 
+                # Check current account balance for daily loss cap
+                current_balance = execution.get_account_balance()
+                daily_low_balance = min(daily_low_balance, current_balance)
+                daily_loss = (starting_balance - daily_low_balance) / starting_balance
+                
                 # Execute trades based on signals
                 if signal == SignalType.BUY:
-                    # Check if we've reached daily loss cap
-                    if execution.check_daily_loss_cap():
+                    # Check daily loss cap
+                    if daily_loss > daily_loss_cap:
                         logger.warning("Daily loss cap reached. Skipping buy signal.")
-                        slack.notify_error("Daily loss cap reached", "Trading paused for 24 hours")
+                        notify_error("Daily loss cap reached", "Trading paused for 24 hours")
                         continue
                     
                     # Calculate position size
                     quantity, notional = execution.calculate_position_size(symbol, price)
                     
                     # Place order
-                    order = execution.place_market_order(
-                        symbol=symbol,
-                        side=OrderSide.BUY,
-                        quantity=quantity
-                    )
-                    
-                    if order:
-                        logger.info(f"Executed BUY order for {symbol}: {quantity} @ {price}")
-                        slack.notify_trade(
+                    try:
+                        order = execution.place_market_order(
                             symbol=symbol,
-                            side="BUY",
-                            price=price,
-                            quantity=quantity,
-                            order_id=order.get("orderId")
+                            side=OrderSide.BUY,
+                            quantity=quantity
                         )
+                        
+                        if order:
+                            logger.info(f"Executed BUY order for {symbol}: {quantity} @ {price}")
+                            notify_trade_execution(
+                                symbol=symbol,
+                                side="BUY",
+                                price=price,
+                                quantity=quantity,
+                                order_id=order.get("orderId")
+                            )
+                    except Exception as e:
+                        error_msg = f"Greška pri izvršavanju BUY naloga za {symbol}: {e}"
+                        logger.error(error_msg)
+                        notify_error(error_msg, f"Cena: {price}, Količina: {quantity}")
                 
                 elif signal == SignalType.SELL:
                     # Get current position size
@@ -459,23 +549,30 @@ def run_live_trade(config_path: Optional[str] = None):
                         quantity = positions[symbol]["quantity"]
                         
                         # Place order
-                        order = execution.place_market_order(
-                            symbol=symbol,
-                            side=OrderSide.SELL,
-                            quantity=quantity
-                        )
-                        
-                        if order:
-                            logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price}")
-                            slack.notify_trade(
+                        try:
+                            order = execution.place_market_order(
                                 symbol=symbol,
-                                side="SELL",
-                                price=price,
-                                quantity=quantity,
-                                order_id=order.get("orderId")
+                                side=OrderSide.SELL,
+                                quantity=quantity
                             )
+                            
+                            if order:
+                                logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price}")
+                                notify_trade_execution(
+                                    symbol=symbol,
+                                    side="SELL",
+                                    price=price,
+                                    quantity=quantity,
+                                    order_id=order.get("orderId")
+                                )
+                        except Exception as e:
+                            error_msg = f"Greška pri izvršavanju SELL naloga za {symbol}: {e}"
+                            logger.error(error_msg)
+                            notify_error(error_msg, f"Cena: {price}, Količina: {quantity}")
                     else:
-                        logger.warning(f"SELL signal for {symbol} but no open position")
+                        error_msg = f"SELL signal za {symbol} ali nema otvorene pozicije"
+                        logger.warning(error_msg)
+                        notify_error(error_msg, "Propušten SELL signal")
             
             # Sleep between iterations
             logger.info("Sleeping before next iteration...")
@@ -483,10 +580,10 @@ def run_live_trade(config_path: Optional[str] = None):
             
     except KeyboardInterrupt:
         logger.info("Live trading stopped by user")
-        slack.send_message(":octagonal_sign: *LIVE TRADING STOPPED BY USER* :octagonal_sign:")
+        notify_error("LIVE TRADING STOPPED BY USER", "Trading bot was manually stopped")
     except Exception as e:
         logger.error(f"Error in live trading: {e}")
-        slack.notify_error(f"Live trading error: {e}")
+        notify_error(f"Live trading error: {e}")
     finally:
         # Clean up
         data_fetcher.stop_all_streams()
@@ -495,9 +592,6 @@ def run_live_trade(config_path: Optional[str] = None):
 
 def main():
     """Main entry point for the application."""
-    # Set up environment
-    setup_environment()
-    
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Crypton - Crypto Trading Bot")
     
@@ -511,6 +605,9 @@ def main():
     
     # Parse arguments
     args = parser.parse_args()
+    
+    # Set up environment with config path
+    setup_environment(args.config)
     
     # Run in selected mode
     if args.mode == 'backtest':

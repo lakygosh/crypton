@@ -73,26 +73,31 @@
             "2025-05-12 07:15:00 [ETH/USDT] TAKE PROFIT, Price: 2597.49, Size: 0.139037, Profit: 5.53%, RSI: 77.72",
             "2025-05-12 07:30:00 [ETH/USDT] SELL EXECUTED, Price: 2597.53, Size: -0.139037, Value: $-361.15, Comm: $0.36",
             "2025-05-12 07:30:00 [ETH/USDT] TRADE COMPLETED, Gross: 18.95, Net: 18.24",
+
             "2025-05-12 18:15:00 [ETH/USDT] BUY CREATE, Price: 2442.30, Size: 0.142582, Value: $348.23, RSI: 24.78, BB Lower: 2443.99",
             "2025-05-12 18:30:00 [ETH/USDT] BUY EXECUTED, Price: 2442.30, Size: 0.142582, Value: $348.23, Comm: $0.35",
             "2025-05-13 13:15:00 [ETH/USDT] TAKE PROFIT, Price: 2544.20, Size: 0.142582, Profit: 4.17%, RSI: 71.06",
             "2025-05-13 13:30:00 [ETH/USDT] SELL EXECUTED, Price: 2544.20, Size: -0.142582, Value: $-362.76, Comm: $0.36",
             "2025-05-13 13:30:00 [ETH/USDT] TRADE COMPLETED, Gross: 14.53, Net: 13.82",
+
             "2025-05-15 07:45:00 [ETH/USDT] BUY CREATE, Price: 2529.01, Size: 0.140087, Value: $354.28, RSI: 29.76, BB Lower: 2535.63",
             "2025-05-15 08:00:00 [ETH/USDT] BUY EXECUTED, Price: 2529.01, Size: 0.140087, Value: $354.28, Comm: $0.35",
             "2025-05-16 11:00:00 [ETH/USDT] TAKE PROFIT, Price: 2630.69, Size: 0.140087, Profit: 4.02%, RSI: 67.65",
             "2025-05-16 11:15:00 [ETH/USDT] SELL EXECUTED, Price: 2630.69, Size: -0.140087, Value: $-368.53, Comm: $0.37",
             "2025-05-16 11:15:00 [ETH/USDT] TRADE COMPLETED, Gross: 14.24, Net: 13.52",
+
             "2025-05-17 00:00:00 [ETH/USDT] BUY CREATE, Price: 2528.15, Size: 0.143856, Value: $363.69, RSI: 29.81, BB Lower: 2528.46",
             "2025-05-17 00:15:00 [ETH/USDT] BUY EXECUTED, Price: 2528.20, Size: 0.143856, Value: $363.70, Comm: $0.36",
             "2025-05-18 20:00:00 [ETH/USDT] STOP LOSS, Price: 2368.91, Size: 0.143856, Loss: 6.30%, RSI: 16.06",
             "2025-05-18 20:15:00 [ETH/USDT] SELL EXECUTED, Price: 2368.91, Size: -0.143856, Value: $-340.78, Comm: $0.34",
             "2025-05-18 20:15:00 [ETH/USDT] TRADE COMPLETED, Gross: -22.91, Net: -23.62",
+
             "2025-05-20 12:30:00 [ETH/USDT] BUY CREATE, Price: 2485.57, Size: 0.150370, Value: $373.76, RSI: 25.86, BB Lower: 2493.12",
             "2025-05-20 12:45:00 [ETH/USDT] BUY EXECUTED, Price: 2486.10, Size: 0.150370, Value: $373.84, Comm: $0.37",
             "2025-05-20 21:15:00 [ETH/USDT] STOP LOSS, Price: 2000.00, Size: 0.150370, Loss: 19.55%, RSI: 9.02",
             "2025-05-20 21:30:00 [ETH/USDT] SELL EXECUTED, Price: 2506.95, Size: -0.150370, Value: $-376.97, Comm: $0.38",
             "2025-05-20 21:30:00 [ETH/USDT] TRADE COMPLETED, Gross: 3.14, Net: 2.38",
+            
             "2025-05-23 11:45:00 [ETH/USDT] BUY CREATE, Price: 2559.55, Size: 0.148396, Value: $379.83, RSI: 18.91, BB Lower: 2610.51"
         ],
         "BTC/USDT": [

@@ -16,10 +16,13 @@ from loguru import logger
 from crypton.utils.config import load_config
 
 
+_LOGGER_INITIALIZED = False
+
 def setup_logger(
     log_level: str = "INFO",
     log_file: Optional[str] = None,
-    json_format: bool = True
+    json_format: bool = True,
+    debug_mode: bool = False
 ) -> None:
     """
     Configure and set up the Loguru logger.
@@ -29,11 +32,20 @@ def setup_logger(
         log_file: Path to log file (optional)
         json_format: Whether to use JSON format for structured logging
     """
+    global _LOGGER_INITIALIZED
+    if _LOGGER_INITIALIZED:
+        return
     # Remove default logger
     logger.remove()
+    _LOGGER_INITIALIZED = True
     
     # Get log level from environment if not provided
     log_level = log_level or os.getenv("LOG_LEVEL", "INFO")
+    
+    # Override log level if debug_mode is enabled
+    if debug_mode:
+        log_level = "DEBUG"
+        logger.info(f"Debug mode enabled, setting log level to {log_level}")
     
     # Temporarily force non-JSON format for debugging
     current_json_format = False
@@ -69,7 +81,7 @@ def setup_logger(
             retention="7 days"
         )
     
-    logger.info(f"Logger initialized with level={log_level}, json_format={current_json_format}")
+    logger.info(f"Logger initialized with level={log_level}, json_format={current_json_format}, debug_mode={debug_mode}")
 
 
 class SlackNotifier:
@@ -209,6 +221,226 @@ class SlackNotifier:
         }
         
         return self.send_message(message, [attachment], color)
+
+
+class DiscordNotifier:
+    """
+    Discord notification utility for sending alerts and updates.
+    
+    Supports sending trade notifications, error alerts, and profit reports
+    via Discord webhook.
+    """
+    
+    def __init__(self, webhook_url: Optional[str] = None, enabled: bool = True):
+        """
+        Initialize the Discord notifier.
+        
+        Args:
+            webhook_url: Discord webhook URL
+            enabled: Whether notifications are enabled
+        """
+        self.webhook_url = webhook_url or os.getenv("DISCORD_WEBHOOK")
+        self.enabled = enabled and bool(self.webhook_url)
+        
+        if self.enabled:
+            logger.info("Discord notifications enabled")
+        else:
+            logger.info("Discord notifications disabled")
+    
+    def send_message(self, content: str, embeds: Optional[list] = None) -> bool:
+        """
+        Send a message to Discord.
+        
+        Args:
+            content: Message text
+            embeds: List of embed dictionaries (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.enabled:
+            logger.debug("Discord notifications disabled, not sending message")
+            return False
+        
+        try:
+            # Prepare payload
+            payload = {
+                "content": content,
+                "username": "Crypton Bot"
+            }
+            
+            # Add embeds if provided
+            if embeds:
+                payload["embeds"] = embeds
+            
+            # Send request
+            response = requests.post(
+                self.webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 204:
+                logger.debug(f"Discord notification sent: {content}")
+                return True
+            else:
+                logger.warning(f"Failed to send Discord notification: {response.status_code} {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error sending Discord notification: {e}")
+            return False
+    
+    def notify_trade(self, symbol: str, side: str, price: float, quantity: float, order_id: Optional[str] = None) -> bool:
+        """
+        Send trade notification.
+        
+        Args:
+            symbol: Trading pair symbol
+            side: Order side (BUY or SELL)
+            price: Execution price
+            quantity: Order quantity
+            order_id: Order ID (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Determine color and emoji based on side
+        if side.upper() == "BUY":
+            color = 0x36a64f  # Green in decimal
+            title = "🟢 BUY Order Executed"
+        else:
+            color = 0xe01e5a  # Red in decimal
+            title = "🔴 SELL Order Executed"
+        
+        # Prepare embed
+        embed = {
+            "title": title,
+            "color": color,
+            "fields": [
+                {
+                    "name": "Symbol",
+                    "value": symbol,
+                    "inline": True
+                },
+                {
+                    "name": "Price",
+                    "value": f"${price:.2f}",
+                    "inline": True
+                },
+                {
+                    "name": "Quantity",
+                    "value": f"{quantity:.6f}",
+                    "inline": True
+                },
+                {
+                    "name": "Total",
+                    "value": f"${price * quantity:.2f}",
+                    "inline": True
+                }
+            ],
+            "footer": {
+                "text": f"Order ID: {order_id}" if order_id else "Crypton Trading Bot"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return self.send_message(f"New {side.upper()} order for {symbol}", [embed])
+    
+    def notify_trade_completed(self, symbol: str, entry_price: float, exit_price: float, quantity: float, profit: float, profit_pct: float) -> bool:
+        """
+        Send trade completion notification with profit/loss info.
+        
+        Args:
+            symbol: Trading pair symbol
+            entry_price: Entry price
+            exit_price: Exit price
+            quantity: Trade quantity
+            profit: Profit/loss amount
+            profit_pct: Profit/loss percentage
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Determine color based on profit/loss
+        if profit >= 0:
+            color = 0x36a64f  # Green in decimal
+            title = "✅ TRADE COMPLETED - PROFIT"
+        else:
+            color = 0xe01e5a  # Red in decimal
+            title = "❌ TRADE COMPLETED - LOSS"
+        
+        # Prepare embed
+        embed = {
+            "title": title,
+            "color": color,
+            "fields": [
+                {
+                    "name": "Symbol",
+                    "value": symbol,
+                    "inline": True
+                },
+                {
+                    "name": "Entry Price",
+                    "value": f"${entry_price:.2f}",
+                    "inline": True
+                },
+                {
+                    "name": "Exit Price",
+                    "value": f"${exit_price:.2f}",
+                    "inline": True
+                },
+                {
+                    "name": "Quantity",
+                    "value": f"{quantity:.6f}",
+                    "inline": True
+                },
+                {
+                    "name": "Profit/Loss",
+                    "value": f"${profit:.2f} ({profit_pct:.2f}%)",
+                    "inline": True
+                }
+            ],
+            "footer": {
+                "text": "Crypton Trading Bot"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return self.send_message(f"Trade completed for {symbol} with {profit:.2f}$ {'profit' if profit >= 0 else 'loss'}", [embed])
+    
+    def notify_error(self, error_message: str, details: Optional[str] = None) -> bool:
+        """
+        Send error notification.
+        
+        Args:
+            error_message: Error message
+            details: Additional error details (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Prepare embed
+        embed = {
+            "title": "⚠️ Error Alert",
+            "color": 0xe01e5a,  # Red in decimal
+            "fields": [
+                {
+                    "name": "Error",
+                    "value": error_message
+                }
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Add details if provided
+        if details:
+            embed["fields"].append({
+                "name": "Details",
+                "value": details
+            })
+        
+        return self.send_message("Error encountered", [embed])
     
     def notify_error(self, error_message: str, details: Optional[str] = None) -> bool:
         """

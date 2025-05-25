@@ -5,6 +5,7 @@ This module provides functionality to fetch both historical OHLCV data via REST 
 and real-time market data via WebSocket connections.
 """
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
 
@@ -35,9 +36,17 @@ class DataFetcher:
             testnet: Whether to use the testnet (default: True)
         """
         # Get API credentials from environment if not provided
-        self.api_key = api_key or os.getenv("BINANCE_API_KEY")
-        self.api_secret = api_secret or os.getenv("BINANCE_API_SECRET")
         self.testnet = testnet
+        
+        # Koristi posebne ključeve za testnet i produkciju
+        if self.testnet:
+            self.api_key = api_key or os.getenv("BINANCE_TESTNET_API_KEY") or os.getenv("BINANCE_API_KEY")
+            self.api_secret = api_secret or os.getenv("BINANCE_TESTNET_API_SECRET") or os.getenv("BINANCE_API_SECRET")
+            logger.info("Using TESTNET API credentials")
+        else:
+            self.api_key = api_key or os.getenv("BINANCE_API_KEY")
+            self.api_secret = api_secret or os.getenv("BINANCE_API_SECRET")
+            logger.info("Using PRODUCTION API credentials")
         
         if not self.api_key or not self.api_secret:
             logger.warning("API credentials not provided. Some functionality will be limited.")
@@ -103,13 +112,21 @@ class DataFetcher:
             DataFrame with OHLCV data
         """
         try:
+            # Logging current time and timezone info for debugging
+            current_time = datetime.now()
+            logger.info(f"Current local time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}, Timestamp: {int(current_time.timestamp() * 1000)}ms")
             logger.info(f"Fetching historical data for {symbol} at {timeframe} timeframe from {since} to {end_date if end_date else 'now'}")
             
             # Convert datetime to timestamp if needed
             if isinstance(since, datetime):
                 since_ts = int(since.timestamp() * 1000)
-            else:
+            elif since is not None:
                 since_ts = since
+            else:
+                # Default to 1 day ago if since is None
+                default_start = datetime.now() - timedelta(days=1)
+                since_ts = int(default_start.timestamp() * 1000)
+                logger.info(f"No start time provided, defaulting to 1 day ago: {default_start}")
                 
             # Convert end_date to timestamp if provided
             end_ts = None
@@ -125,15 +142,29 @@ class DataFetcher:
             page_count = 0
             max_pages = 50  # Ograničimo na 50 stranica (50,000 sveća) kao sigurnosna mera
             
+            # Set exchange to use adjust for time difference
+            self.exchange.options['adjustForTimeDifference'] = True
+            
             while True:
                 page_count += 1
-                # Fetch batch of candles
+                # Log the fetch time to track when we're making the API call
+                fetch_time = datetime.now()
+                logger.debug(f"Fetch time: {fetch_time.strftime('%Y-%m-%d %H:%M:%S')}")
                 logger.debug(f"Fetching batch {page_count} for {symbol} since {datetime.fromtimestamp(current_since/1000)}")
+                
+                # Force recent data with newer until parameter
+                until_param = None
+                if page_count == 1:  # Only for first page to ensure we get latest data
+                    until_param = int(fetch_time.timestamp() * 1000)  # Current time in ms
+                    logger.debug(f"Setting until parameter to current time: {fetch_time}")
+                
+                # Fetch batch of candles with options for better time handling
                 ohlcv = self.exchange.fetch_ohlcv(
                     symbol=symbol,
                     timeframe=timeframe,
                     since=current_since,
-                    limit=limit
+                    limit=limit,
+                    params={'until': until_param} if until_param else {}
                 )
                 
                 if not ohlcv or len(ohlcv) == 0:
@@ -172,8 +203,19 @@ class DataFetcher:
                 columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
             )
             
-            # Convert timestamp to datetime
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            # Store original timestamp for debug purposes
+            df['timestamp_ms'] = df['timestamp'].copy()
+            
+            # Add local time (UTC+2) column
+            utc_offset = 2 * 60 * 60 * 1000  # 2 sata u milisekundama za CEST/UTC+2
+            df['local_timestamp_ms'] = df['timestamp_ms'] + utc_offset
+            
+            # Convert timestamp to datetime (UTC)
+            df['timestamp'] = pd.to_datetime(df['timestamp_ms'], unit='ms')
+            df['datetime'] = df['timestamp']  # Human-readable UTC time
+            
+            # Convert local timestamp to datetime
+            df['local_time'] = pd.to_datetime(df['local_timestamp_ms'], unit='ms')
             
             # Filter by end_date if provided
             if end_date is not None:
@@ -182,7 +224,22 @@ class DataFetcher:
             # Sort by timestamp to ensure chronological order
             df = df.sort_values('timestamp').reset_index(drop=True)
             
-            logger.info(f"Fetched {len(df)} candles for {symbol} from {df['timestamp'].min()} to {df['timestamp'].max()}")
+            # Log more detailed information about the data we fetched
+            if not df.empty:
+                first_candle = df.iloc[0]
+                last_candle = df.iloc[-1]
+                latest_local = datetime.now()
+                
+                logger.info(f"Fetched {len(df)} candles for {symbol} from {first_candle['datetime']} to {last_candle['datetime']} (UTC)")
+                logger.info(f"Local time range: from {first_candle['local_time']} to {last_candle['local_time']} (CEST/UTC+2)")
+                logger.info(f"Latest candle UTC: {last_candle['datetime']}, Local: {last_candle['local_time']}, Current time: {latest_local.strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info(f"Time difference from latest candle: {(latest_local - last_candle['local_time']).total_seconds()/60:.2f} minutes")
+                
+                # Check if we're missing the most recent candle using local time
+                timeframe_mins = int(timeframe[:-1]) if timeframe.endswith('m') else int(timeframe[:-1])*60 if timeframe.endswith('h') else 1440
+                if (latest_local - last_candle['local_time']).total_seconds()/60 > timeframe_mins*2:
+                    logger.warning(f"Missing recent data! Latest candle local time is {last_candle['local_time']}, which is more than 2 timeframes old!")
+            
             return df
             
         except Exception as e:

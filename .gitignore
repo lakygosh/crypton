@@ -68,6 +68,5 @@ venv.bak/
 
 # Project specific
 *.log
-config.yml
 data/*.csv
 data/*.parquet

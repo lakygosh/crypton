@@ -91,7 +91,27 @@ class ExecutionEngine:
         self.max_positions = self.risk_config.get('max_open_positions', 3)
         self.position_size_pct = self.risk_config.get('position_size_pct', 0.01)  # 1% of equity
         self.stop_loss_pct = self.risk_config.get('stop_loss_pct', 0.02)  # 2%
-        self.take_profit_pct = self.risk_config.get('take_profit_pct', 0.04)  # 4%
+        
+        # Graduated take profit parameters
+        self.take_profit_config = self.risk_config.get('take_profit', {})
+        
+        # If take_profit is a nested dictionary, use those values
+        if isinstance(self.take_profit_config, dict) and self.take_profit_config:
+            self.take_profit_tier1_pct = self.take_profit_config.get('tier1_pct', 0.02)  # 2%
+            self.take_profit_tier2_pct = self.take_profit_config.get('tier2_pct', 0.03)  # 3%
+            self.take_profit_tier3_pct = self.take_profit_config.get('tier3_pct', 0.04)  # 4%
+            self.take_profit_tier1_size_pct = self.take_profit_config.get('tier1_size_pct', 0.33)  # 33%
+            self.take_profit_tier2_size_pct = self.take_profit_config.get('tier2_size_pct', 0.33)  # 33%
+            self.take_profit_tier3_size_pct = self.take_profit_config.get('tier3_size_pct', 0.34)  # 34%
+        else:
+            # Backward compatibility for old config format with single take_profit_pct
+            self.take_profit_pct = self.risk_config.get('take_profit_pct', 0.04)  # 4%
+            self.take_profit_tier1_pct = 0.02  # 2%
+            self.take_profit_tier2_pct = 0.03  # 3%
+            self.take_profit_tier3_pct = self.take_profit_pct  # Use existing value (4%)
+            self.take_profit_tier1_size_pct = 0.33  # 33%
+            self.take_profit_tier2_size_pct = 0.33  # 33%
+            self.take_profit_tier3_size_pct = 0.34  # 34%
         
         # Rate limiting
         self.last_request_time = 0
@@ -104,7 +124,9 @@ class ExecutionEngine:
         logger.info(f"Risk parameters: max_positions={self.max_positions}, " +
                    f"position_size_pct={self.position_size_pct}, " +
                    f"stop_loss_pct={self.stop_loss_pct}, " +
-                   f"take_profit_pct={self.take_profit_pct}")
+                   f"take_profit_tier1_pct={self.take_profit_tier1_pct}, " +
+                   f"take_profit_tier2_pct={self.take_profit_tier2_pct}, " +
+                   f"take_profit_tier3_pct={self.take_profit_tier3_pct}")
     
     def _respect_rate_limit(self):
         """Ensure we don't exceed API rate limits."""
@@ -293,29 +315,38 @@ class ExecutionEngine:
             logger.error(f"Error placing market order: {e}")
             return {}
     
-    def _place_sl_tp_orders(self, symbol: str) -> Tuple[Dict, Dict]:
+    def _place_sl_tp_orders(self, symbol: str) -> Tuple[Dict, List[Dict]]:
         """
-        Place stop loss and take profit orders for an open position.
+        Place stop loss and graduated take profit orders for an open position.
         
         Args:
             symbol: Trading pair symbol
             
         Returns:
-            Tuple of (stop_loss_order, take_profit_order)
+            Tuple of (stop_loss_order, [take_profit_orders])
         """
         try:
             # Get position details
             position = self.open_positions.get(symbol)
             if not position:
                 logger.warning(f"No open position found for {symbol}")
-                return {}, {}
+                return {}, []
             
             entry_price = position["entry_price"]
             quantity = position["quantity"]
             
-            # Calculate stop loss and take profit prices
+            # Calculate stop loss price
             sl_price = entry_price * (1 - self.stop_loss_pct)
-            tp_price = entry_price * (1 + self.take_profit_pct)
+            
+            # Calculate take profit prices for each tier
+            tp_tier1_price = entry_price * (1 + self.take_profit_tier1_pct)
+            tp_tier2_price = entry_price * (1 + self.take_profit_tier2_pct)
+            tp_tier3_price = entry_price * (1 + self.take_profit_tier3_pct)
+            
+            # Calculate quantities for each tier
+            tier1_qty = round(quantity * self.take_profit_tier1_size_pct, 8)  # 33% of position
+            tier2_qty = round(quantity * self.take_profit_tier2_size_pct, 8)  # 33% of position
+            tier3_qty = round(quantity - tier1_qty - tier2_qty, 8)  # Remaining ~34%
             
             # Format prices according to symbol precision
             symbol_info = self.get_symbol_info(symbol)
@@ -329,7 +360,9 @@ class ExecutionEngine:
                         break
             
             sl_price = round(sl_price, price_precision)
-            tp_price = round(tp_price, price_precision)
+            tp_tier1_price = round(tp_tier1_price, price_precision)
+            tp_tier2_price = round(tp_tier2_price, price_precision)
+            tp_tier3_price = round(tp_tier3_price, price_precision)
             
             # Format symbol (replace '/' if present)
             formatted_symbol = symbol.replace("/", "")
@@ -345,30 +378,72 @@ class ExecutionEngine:
                 price=sl_price  # Limit price
             )
             
-            # Place take profit order
+            # Place take profit orders for each tier
+            tp_orders = []
+            
+            # Tier 1 take profit order (33% at 2%)
             self._respect_rate_limit()
-            tp_order = self.client.create_order(
+            tp_tier1_order = self.client.create_order(
                 symbol=formatted_symbol,
                 side=OrderSide.SELL.value,
                 type=OrderType.TAKE_PROFIT.value,
-                quantity=quantity,
-                stopPrice=tp_price,
-                price=tp_price  # Limit price
+                quantity=tier1_qty,
+                stopPrice=tp_tier1_price,
+                price=tp_tier1_price  # Limit price
             )
+            tp_orders.append(tp_tier1_order)
+            
+            # Tier 2 take profit order (33% at 3%)
+            self._respect_rate_limit()
+            tp_tier2_order = self.client.create_order(
+                symbol=formatted_symbol,
+                side=OrderSide.SELL.value,
+                type=OrderType.TAKE_PROFIT.value,
+                quantity=tier2_qty,
+                stopPrice=tp_tier2_price,
+                price=tp_tier2_price  # Limit price
+            )
+            tp_orders.append(tp_tier2_order)
+            
+            # Tier 3 take profit order (34% at 4%)
+            self._respect_rate_limit()
+            tp_tier3_order = self.client.create_order(
+                symbol=formatted_symbol,
+                side=OrderSide.SELL.value,
+                type=OrderType.TAKE_PROFIT.value,
+                quantity=tier3_qty,
+                stopPrice=tp_tier3_price,
+                price=tp_tier3_price  # Limit price
+            )
+            tp_orders.append(tp_tier3_order)
             
             # Update position with SL/TP information
             self.open_positions[symbol].update({
                 "sl_order_id": sl_order["orderId"],
-                "tp_order_id": tp_order["orderId"],
+                "tp_tier1_order_id": tp_tier1_order["orderId"],
+                "tp_tier2_order_id": tp_tier2_order["orderId"],
+                "tp_tier3_order_id": tp_tier3_order["orderId"],
                 "sl_price": sl_price,
-                "tp_price": tp_price
+                "tp_tier1_price": tp_tier1_price,
+                "tp_tier2_price": tp_tier2_price,
+                "tp_tier3_price": tp_tier3_price,
+                "tp_tier1_qty": tier1_qty,
+                "tp_tier2_qty": tier2_qty,
+                "tp_tier3_qty": tier3_qty,
+                "profit_tiers": {
+                    "tier1_hit": False,
+                    "tier2_hit": False,
+                    "tier3_hit": False
+                }
             })
             
             logger.info(f"Placed SL/TP orders for {symbol}: " +
-                       f"SL at {sl_price} (ID: {sl_order['orderId']}), " +
-                       f"TP at {tp_price} (ID: {tp_order['orderId']})")
+                      f"SL at {sl_price} (ID: {sl_order['orderId']}), " +
+                      f"TP1 at {tp_tier1_price} (ID: {tp_tier1_order['orderId']}), " +
+                      f"TP2 at {tp_tier2_price} (ID: {tp_tier2_order['orderId']}), " +
+                      f"TP3 at {tp_tier3_price} (ID: {tp_tier3_order['orderId']})")
             
-            return sl_order, tp_order
+            return sl_order, tp_orders
             
         except BinanceAPIException as e:
             logger.error(f"API error placing SL/TP orders: {e}")

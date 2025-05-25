@@ -208,8 +208,30 @@ class MeanReversionStrategy:
             Tuple containing (signal_type, price, row_data)
         """
         try:
+            # Debug info about the incoming dataframe
+            logger.debug(f"DataFrame for {symbol} has columns: {df.columns.tolist()}")
+            logger.debug(f"DataFrame shape: {df.shape}")
+            
+            # Check if 'close' column exists
+            if 'close' not in df.columns:
+                logger.error(f"Missing 'close' column in dataframe for {symbol}")
+                return SignalType.NEUTRAL, None, None
+            
             # Calculate indicators and generate signals
             df = self.calculate_indicators(df)
+            
+            # Debug info after calculating indicators
+            logger.debug(f"After indicators, DataFrame for {symbol} has columns: {df.columns.tolist()}")
+            
+            # Check for required indicators before generating signals
+            required_indicators = ['BBL', 'BBU', 'RSI']
+            missing_indicators = [col for col in required_indicators if col not in df.columns]
+            
+            if missing_indicators:
+                logger.error(f"Missing indicators for {symbol}: {missing_indicators}")
+                return SignalType.NEUTRAL, None, None
+            
+            # Generate signals after ensuring all indicators are present
             df = self.generate_signals(df, symbol, current_time)
             
             # Get the last (most recent) row

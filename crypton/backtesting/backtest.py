@@ -39,7 +39,13 @@ class MeanReversionBT(bt.Strategy):
         ('rsi_oversold', 30),
         ('rsi_overbought', 70),
         ('stop_loss_pct', 0.02),
-        ('take_profit_pct', 0.04),
+        # New graduated take profit parameters
+        ('take_profit_tier1_pct', 0.02),  # 2% first tier
+        ('take_profit_tier2_pct', 0.03),  # 3% second tier 
+        ('take_profit_tier3_pct', 0.04),  # 4% third tier
+        ('take_profit_tier1_size_pct', 0.33),  # Sell 33% at first tier
+        ('take_profit_tier2_size_pct', 0.33),  # Sell 33% at second tier
+        ('take_profit_tier3_size_pct', 0.34),  # Sell 34% at third tier (remaining)
         ('position_size_pct', 0.01),
         ('cool_down_hours', 4), # Default cool-down period in hours
         ('cool_down_minutes', 0) # Default cool-down period in minutes
@@ -62,6 +68,7 @@ class MeanReversionBT(bt.Strategy):
         self.buy_signals = []
         self.sell_signals = []
         self.trade_event_logs = [] # For detailed logging of events
+        self.profit_tiers_hit = {}  # To track which tiers have been hit for each position
 
     def log(self, txt, dt=None):
         """Log strategy information with timestamp."""
@@ -179,7 +186,7 @@ class MeanReversionBT(bt.Strategy):
             # Update last trade time
             self.last_trade_time = current_time
         
-        # If we have a position, check for take profit
+        # If we have a position, check for graduated take profit
         elif self.position:
             # Store current indicator values
             bb_upper = self.bband.lines.top[0]
@@ -187,14 +194,133 @@ class MeanReversionBT(bt.Strategy):
             bb_lower = self.bband.lines.bot[0]
             rsi_value = self.rsi[0]
             sma_value = self.data.close[0]
+            current_time = self.data.datetime.datetime(0)
             
-            # Check for take profit (sell when price increases by take_profit_pct)
-            if self.data.close[0] > self.position.price * (1 + self.params.take_profit_pct):
+            # Initialize profit tiers tracker for this position if it doesn't exist
+            position_key = f"{current_time.date()}-{self.position.price}"
+            if position_key not in self.profit_tiers_hit:
+                self.profit_tiers_hit[position_key] = {
+                    'tier1': False,
+                    'tier2': False,
+                    'tier3': False,
+                    'original_size': self.position.size
+                }
+            
+            position_tracker = self.profit_tiers_hit[position_key]
+            original_size = position_tracker['original_size']
+            
+            # Check for tier 3 (highest) if not already hit
+            if not position_tracker['tier3'] and self.data.close[0] >= self.position.price * (1 + self.params.take_profit_tier3_pct):
+                tier3_size = original_size * self.params.take_profit_tier3_size_pct
+                if tier3_size > self.position.size:
+                    tier3_size = self.position.size  # Ensure we don't sell more than we have
+                    
                 profit_pct = (self.data.close[0] / self.position.price - 1) * 100
-                # Sell the entire position by specifying size
-                position_size = self.position.size
-                self.log(f'TAKE PROFIT, Price: {self.data.close[0]:.2f}, Size: {position_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}')
-                self.order = self.sell(size=position_size)
+                self.log(f'TAKE PROFIT TIER 3 (FINAL), Price: {self.data.close[0]:.2f}, Size: {tier3_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}')
+                
+                # Create sell order for tier 3
+                self.order = self.sell(size=tier3_size)
+                position_tracker['tier3'] = True
+                
+                # Record signal with detailed data
+                signal_data = {
+                    'time': current_time,
+                    'price': self.data.close[0],
+                    'action': 'SELL',
+                    'reason': 'TAKE_PROFIT_TIER3',
+                    'profit_pct': profit_pct,
+                    'position_pct': self.params.take_profit_tier3_size_pct * 100,
+                    'size': tier3_size,
+                    'bb_upper': bb_upper,
+                    'bb_middle': bb_middle,
+                    'bb_lower': bb_lower,
+                    'rsi': rsi_value
+                }
+                self.sell_signals.append(signal_data)
+                
+                # Update current trade record
+                exit_data = {
+                    'exit_time': current_time,
+                    'exit_price': self.data.close[0],
+                    'exit_indicators': {
+                        'bb_upper': bb_upper,
+                        'bb_middle': bb_middle,
+                        'bb_lower': bb_lower,
+                        'rsi': rsi_value
+                    },
+                    'profit_pct': profit_pct,
+                    'exit_reason': 'TAKE_PROFIT_TIER3',
+                    'position_pct_closed': self.params.take_profit_tier3_size_pct * 100
+                }
+                
+                # If we haven't recorded any exit yet, create a new exit record
+                if not hasattr(self, 'current_trade') or 'exits' not in self.current_trade:
+                    self.current_trade['exits'] = []
+                
+                self.current_trade['exits'].append(exit_data)
+                
+            # Check for tier 2 if not already hit
+            elif not position_tracker['tier2'] and self.data.close[0] >= self.position.price * (1 + self.params.take_profit_tier2_pct):
+                tier2_size = original_size * self.params.take_profit_tier2_size_pct
+                if tier2_size > self.position.size:
+                    tier2_size = self.position.size  # Ensure we don't sell more than we have
+                    
+                profit_pct = (self.data.close[0] / self.position.price - 1) * 100
+                self.log(f'TAKE PROFIT TIER 2, Price: {self.data.close[0]:.2f}, Size: {tier2_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}')
+                
+                # Create sell order for tier 2
+                self.order = self.sell(size=tier2_size)
+                position_tracker['tier2'] = True
+                
+                # Record signal with detailed data
+                signal_data = {
+                    'time': current_time,
+                    'price': self.data.close[0],
+                    'action': 'SELL',
+                    'reason': 'TAKE_PROFIT_TIER2',
+                    'profit_pct': profit_pct,
+                    'position_pct': self.params.take_profit_tier2_size_pct * 100,
+                    'size': tier2_size,
+                    'bb_upper': bb_upper,
+                    'bb_middle': bb_middle,
+                    'bb_lower': bb_lower,
+                    'rsi': rsi_value
+                }
+                self.sell_signals.append(signal_data)
+                
+                # Update current trade record
+                exit_data = {
+                    'exit_time': current_time,
+                    'exit_price': self.data.close[0],
+                    'exit_indicators': {
+                        'bb_upper': bb_upper,
+                        'bb_middle': bb_middle,
+                        'bb_lower': bb_lower,
+                        'rsi': rsi_value
+                    },
+                    'profit_pct': profit_pct,
+                    'exit_reason': 'TAKE_PROFIT_TIER2',
+                    'position_pct_closed': self.params.take_profit_tier2_size_pct * 100
+                }
+                
+                # If we haven't recorded any exit yet, create a new exit record
+                if not hasattr(self, 'current_trade') or 'exits' not in self.current_trade:
+                    self.current_trade['exits'] = []
+                
+                self.current_trade['exits'].append(exit_data)
+                
+            # Check for tier 1 if not already hit
+            elif not position_tracker['tier1'] and self.data.close[0] >= self.position.price * (1 + self.params.take_profit_tier1_pct):
+                tier1_size = original_size * self.params.take_profit_tier1_size_pct
+                if tier1_size > self.position.size:
+                    tier1_size = self.position.size  # Ensure we don't sell more than we have
+                    
+                profit_pct = (self.data.close[0] / self.position.price - 1) * 100
+                self.log(f'TAKE PROFIT TIER 1, Price: {self.data.close[0]:.2f}, Size: {tier1_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}')
+                
+                # Create sell order for tier 1
+                self.order = self.sell(size=tier1_size)
+                position_tracker['tier1'] = True
                 
                 # Record signal with detailed data
                 signal_data = {
@@ -290,7 +416,13 @@ class MultiAssetMeanReversionBT(bt.Strategy):
         ('rsi_oversold', 30),
         ('rsi_overbought', 70),
         ('stop_loss_pct', 0.02),
-        ('take_profit_pct', 0.04),
+        # New graduated take profit parameters
+        ('take_profit_tier1_pct', 0.02),  # 2% first tier
+        ('take_profit_tier2_pct', 0.03),  # 3% second tier 
+        ('take_profit_tier3_pct', 0.04),  # 4% third tier
+        ('take_profit_tier1_size_pct', 0.33),  # Sell 33% at first tier
+        ('take_profit_tier2_size_pct', 0.33),  # Sell 33% at second tier
+        ('take_profit_tier3_size_pct', 0.34),  # Sell 34% at third tier (remaining)
         ('position_size_pct', 0.333),  # Default to 1/3 of equity per symbol
         ('cool_down_hours', 4), # Default cool-down period in hours
         ('cool_down_minutes', 0) # Default cool-down period in minutes
@@ -310,6 +442,7 @@ class MultiAssetMeanReversionBT(bt.Strategy):
         self.buy_signals = []
         self.sell_signals = []
         self.trade_event_logs = [] # For detailed logging of events
+        self.profit_tiers_hit = {}  # Dict to track which tiers have been hit for each symbol's position
         
         # Setup indicators for each data feed
         for i, data in enumerate(self.datas):
@@ -531,15 +664,130 @@ class MultiAssetMeanReversionBT(bt.Strategy):
                 bb_lower = bb.lines.bot[0]
                 rsi_value = rsi[0]
                 
-                # Take profit condition
-                if data.close[0] > position.price * (1 + self.params.take_profit_pct):
+                # Initialize profit tiers tracker for this position if it doesn't exist
+                # Use a combination of symbol, date and position price as the key
+                position_key = f"{symbol}-{current_time.date()}-{position.price}"
+                if position_key not in self.profit_tiers_hit:
+                    self.profit_tiers_hit[position_key] = {
+                        'tier1': False,
+                        'tier2': False,
+                        'tier3': False,
+                        'original_size': position.size
+                    }
+                
+                position_tracker = self.profit_tiers_hit[position_key]
+                original_size = position_tracker['original_size']
+                
+                # Check for tier 3 (highest) if not already hit
+                if not position_tracker['tier3'] and data.close[0] >= position.price * (1 + self.params.take_profit_tier3_pct):
+                    tier3_size = original_size * self.params.take_profit_tier3_size_pct
+                    if tier3_size > position.size:
+                        tier3_size = position.size  # Ensure we don't sell more than we have
+                        
                     profit_pct = (data.close[0] / position.price - 1) * 100
+                    self.log(f'TAKE PROFIT TIER 3 (FINAL), Price: {data.close[0]:.2f}, Size: {tier3_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}', symbol=symbol)
                     
-                    # Log take profit signal
-                    self.log(f'TAKE PROFIT, Price: {data.close[0]:.2f}, Size: {position.size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}', symbol=symbol)
+                    # Create sell order for tier 3
+                    self.orders[symbol] = self.sell(data=data, size=tier3_size)
+                    position_tracker['tier3'] = True
                     
-                    # Create sell order
-                    self.orders[symbol] = self.sell(data=data, size=position.size)
+                    # Record signal data
+                    signal_data = {
+                        'time': current_time,
+                        'price': data.close[0],
+                        'action': 'SELL',
+                        'reason': 'TAKE_PROFIT_TIER3',
+                        'profit_pct': profit_pct,
+                        'position_pct': self.params.take_profit_tier3_size_pct * 100,
+                        'size': tier3_size,
+                        'bb_upper': bb_upper,
+                        'bb_middle': bb_middle,
+                        'bb_lower': bb_lower,
+                        'rsi': rsi_value
+                    }
+                    self.sell_signals.append(signal_data)
+                    self.trade_logs[symbol]['sell_signals'].append(signal_data)
+                    
+                    # Complete the trade record
+                    if 'exit_time' not in self.trade_logs[symbol]['current_trade']:
+                        self.trade_logs[symbol]['current_trade'].update({
+                            'exit_time': current_time,
+                            'exit_price': data.close[0],
+                            'exit_indicators': {
+                                'bb_upper': bb_upper,
+                                'bb_middle': bb_middle,
+                                'bb_lower': bb_lower,
+                                'rsi': rsi_value
+                            },
+                            'profit_pct': profit_pct,
+                            'exit_reason': 'TAKE_PROFIT_TIER3',
+                            'position_pct_closed': self.params.take_profit_tier3_size_pct * 100
+                        })
+                    
+                    # Update last trade time
+                    self.last_trade_time[symbol] = current_time
+                
+                # Check for tier 2 if not already hit
+                elif not position_tracker['tier2'] and data.close[0] >= position.price * (1 + self.params.take_profit_tier2_pct):
+                    tier2_size = original_size * self.params.take_profit_tier2_size_pct
+                    if tier2_size > position.size:
+                        tier2_size = position.size  # Ensure we don't sell more than we have
+                        
+                    profit_pct = (data.close[0] / position.price - 1) * 100
+                    self.log(f'TAKE PROFIT TIER 2, Price: {data.close[0]:.2f}, Size: {tier2_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}', symbol=symbol)
+                    
+                    # Create sell order for tier 2
+                    self.orders[symbol] = self.sell(data=data, size=tier2_size)
+                    position_tracker['tier2'] = True
+                    
+                    # Record signal data
+                    signal_data = {
+                        'time': current_time,
+                        'price': data.close[0],
+                        'action': 'SELL',
+                        'reason': 'TAKE_PROFIT_TIER2',
+                        'profit_pct': profit_pct,
+                        'position_pct': self.params.take_profit_tier2_size_pct * 100,
+                        'size': tier2_size,
+                        'bb_upper': bb_upper,
+                        'bb_middle': bb_middle,
+                        'bb_lower': bb_lower,
+                        'rsi': rsi_value
+                    }
+                    self.sell_signals.append(signal_data)
+                    self.trade_logs[symbol]['sell_signals'].append(signal_data)
+                    
+                    # Complete the trade record
+                    if 'exit_time' not in self.trade_logs[symbol]['current_trade']:
+                        self.trade_logs[symbol]['current_trade'].update({
+                            'exit_time': current_time,
+                            'exit_price': data.close[0],
+                            'exit_indicators': {
+                                'bb_upper': bb_upper,
+                                'bb_middle': bb_middle,
+                                'bb_lower': bb_lower,
+                                'rsi': rsi_value
+                            },
+                            'profit_pct': profit_pct,
+                            'exit_reason': 'TAKE_PROFIT_TIER2',
+                            'position_pct_closed': self.params.take_profit_tier2_size_pct * 100
+                        })
+                    
+                    # Update last trade time
+                    self.last_trade_time[symbol] = current_time
+                
+                # Check for tier 1 if not already hit
+                elif not position_tracker['tier1'] and data.close[0] >= position.price * (1 + self.params.take_profit_tier1_pct):
+                    tier1_size = original_size * self.params.take_profit_tier1_size_pct
+                    if tier1_size > position.size:
+                        tier1_size = position.size  # Ensure we don't sell more than we have
+                        
+                    profit_pct = (data.close[0] / position.price - 1) * 100
+                    self.log(f'TAKE PROFIT TIER 1, Price: {data.close[0]:.2f}, Size: {tier1_size:.6f}, Profit: {profit_pct:.2f}%, RSI: {rsi_value:.2f}', symbol=symbol)
+                    
+                    # Create sell order for tier 1
+                    self.orders[symbol] = self.sell(data=data, size=tier1_size)
+                    position_tracker['tier1'] = True
                     
                     # Record signal data
                     signal_data = {
@@ -729,12 +977,44 @@ class BacktestHarness:
             'rsi_length': self.rsi_config.get('length', 14),
             'rsi_oversold': self.rsi_config.get('oversold', 30),
             'rsi_overbought': self.rsi_config.get('overbought', 70),
-            'stop_loss_pct': self.risk_config.get('stop_loss_pct', 0.02),
-            'take_profit_pct': self.risk_config.get('take_profit_pct', 0.04),
-            'position_size_pct': self.risk_config.get('position_size_pct', 0.01),
+        }
+        
+        # Get take profit configuration
+        take_profit_config = self.risk_config.get('take_profit', {})
+        
+        # If take_profit is a nested dictionary, use those values
+        if isinstance(take_profit_config, dict) and take_profit_config:
+            take_profit_tier1_pct = take_profit_config.get('tier1_pct', 0.02)
+            take_profit_tier2_pct = take_profit_config.get('tier2_pct', 0.03)
+            take_profit_tier3_pct = take_profit_config.get('tier3_pct', 0.04)
+            take_profit_tier1_size_pct = take_profit_config.get('tier1_size_pct', 0.33)
+            take_profit_tier2_size_pct = take_profit_config.get('tier2_size_pct', 0.33)
+            take_profit_tier3_size_pct = take_profit_config.get('tier3_size_pct', 0.34)
+        else:
+            # Backward compatibility for old config format with single take_profit_pct
+            take_profit_pct = self.risk_config.get('take_profit_pct', 0.04)
+            take_profit_tier1_pct = 0.02
+            take_profit_tier2_pct = 0.03
+            take_profit_tier3_pct = take_profit_pct
+            take_profit_tier1_size_pct = 0.33
+            take_profit_tier2_size_pct = 0.33
+            take_profit_tier3_size_pct = 0.34
+            
+        stop_loss_pct = self.risk_config.get('stop_loss_pct', 0.02)
+        position_size_pct = self.risk_config.get('position_size_pct', 0.01)
+        
+        strategy_params.update({
+            'take_profit_tier1_pct': take_profit_tier1_pct,
+            'take_profit_tier2_pct': take_profit_tier2_pct,
+            'take_profit_tier3_pct': take_profit_tier3_pct,
+            'take_profit_tier1_size_pct': take_profit_tier1_size_pct,
+            'take_profit_tier2_size_pct': take_profit_tier2_size_pct,
+            'take_profit_tier3_size_pct': take_profit_tier3_size_pct,
+            'stop_loss_pct': stop_loss_pct,
+            'position_size_pct': position_size_pct,
             'cool_down_hours': 0,
             'cool_down_minutes': 0
-        }
+        })
         
         # Parse cool_down parameter
         cool_down_value = self.cool_down.get('hours', 4)
@@ -997,12 +1277,42 @@ class BacktestHarness:
             'rsi_length': self.rsi_config.get('length', 14),
             'rsi_oversold': self.rsi_config.get('oversold', 30),
             'rsi_overbought': self.rsi_config.get('overbought', 70),
-            'stop_loss_pct': self.risk_config.get('stop_loss_pct', 0.02),
-            'take_profit_pct': self.risk_config.get('take_profit_pct', 0.04),
             'position_size_pct': self.risk_config.get('position_size_pct', 0.333),  # Use from config
             'cool_down_hours': 0,
             'cool_down_minutes': 0
         }
+        
+        # Get take profit configuration
+        take_profit_config = self.risk_config.get('take_profit', {})
+        
+        # If take_profit is a nested dictionary, use those values
+        if isinstance(take_profit_config, dict) and take_profit_config:
+            take_profit_tier1_pct = take_profit_config.get('tier1_pct', 0.02)
+            take_profit_tier2_pct = take_profit_config.get('tier2_pct', 0.03)
+            take_profit_tier3_pct = take_profit_config.get('tier3_pct', 0.04)
+            take_profit_tier1_size_pct = take_profit_config.get('tier1_size_pct', 0.33)
+            take_profit_tier2_size_pct = take_profit_config.get('tier2_size_pct', 0.33)
+            take_profit_tier3_size_pct = take_profit_config.get('tier3_size_pct', 0.34)
+        else:
+            # Backward compatibility for old config format with single take_profit_pct
+            take_profit_pct = self.risk_config.get('take_profit_pct', 0.04)
+            take_profit_tier1_pct = 0.02
+            take_profit_tier2_pct = 0.03
+            take_profit_tier3_pct = take_profit_pct
+            take_profit_tier1_size_pct = 0.33
+            take_profit_tier2_size_pct = 0.33
+            take_profit_tier3_size_pct = 0.34
+        
+        # Add stop loss and take profit parameters
+        strategy_params.update({
+            'stop_loss_pct': self.risk_config.get('stop_loss_pct', 0.02),
+            'take_profit_tier1_pct': take_profit_tier1_pct,
+            'take_profit_tier2_pct': take_profit_tier2_pct,
+            'take_profit_tier3_pct': take_profit_tier3_pct,
+            'take_profit_tier1_size_pct': take_profit_tier1_size_pct,
+            'take_profit_tier2_size_pct': take_profit_tier2_size_pct,
+            'take_profit_tier3_size_pct': take_profit_tier3_size_pct
+        })
         
         # Parse cool_down parameter
         cool_down_value = self.cool_down.get('hours', 4)
@@ -1101,616 +1411,5 @@ class BacktestHarness:
             logger.info(f"Detailed portfolio log saved to {json_filepath}")
         except Exception as e:
             logger.error(f"Failed to save portfolio JSON log: {e}")
-
-        # Prepare data for CSV
-        csv_row = {**input_parameters_log, **metrics}
-        flat_csv_row = {}
-        for k, v in csv_row.items():
-            if isinstance(v, dict):
-                for nk, nv in v.items():
-                    flat_csv_row[f"{k}_{nk}"] = nv
-            else:
-                flat_csv_row[k] = v
-        
-        # Add portfolio_ prefix to CSV filename
-        portfolio_csv_path = os.path.join(self.performances_dir, "portfolio_backtest_summary.csv")
-        try:
-            file_exists = os.path.isfile(portfolio_csv_path)
-            with open(portfolio_csv_path, 'a', newline='') as f_csv:
-                import csv
-                writer = csv.DictWriter(f_csv, fieldnames=list(flat_csv_row.keys()))
-                if not file_exists:
-                    writer.writeheader()
-                writer.writerow(flat_csv_row)
-            logger.info(f"Portfolio summary appended to {portfolio_csv_path}")
-        except Exception as e:
-            logger.error(f"Failed to save portfolio CSV log: {e}")
-        
-        # Generate HTML report
-        report_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            f"portfolio_backtest_report_{run_timestamp}.html"
-        )
-        self.generate_portfolio_report(strategy, metrics, symbol_data_dict.keys(), report_path)
         
         return strategy, metrics
-
-    def generate_portfolio_report(
-        self, 
-        strategy: bt.Strategy, 
-        metrics: Dict,
-        symbols: List[str],
-        report_path: Optional[str] = None
-    ) -> str:
-        """
-        Generate HTML report for portfolio backtest results.
-        
-        Args:
-            strategy: Backtrader strategy instance
-            metrics: Metrics dictionary
-            symbols: List of symbols in the portfolio
-            report_path: Path to save the report (optional)
-            
-        Returns:
-            Path to the generated report
-        """
-        # Create HTML content
-        title = f"Portfolio Backtest Report - {', '.join(symbols)}"
-        
-        # Prepare the HTML template - similar to generate_report but adapted for portfolio
-        total_return_class = 'positive' if metrics['total_return_pct'] > 0 else 'negative'
-        total_return_sign = '+' if metrics['total_return_pct'] > 0 else ''
-        
-        # Bezbedna provera za Sharpe Ratio - pošto može biti None
-        sharpe_ratio = metrics.get('sharpe_ratio')
-        sharpe_class = ''
-        if sharpe_ratio is not None:
-            sharpe_class = 'positive' if sharpe_ratio > 1 else 'negative' if sharpe_ratio < 0.5 else ''
-        
-        drawdown_class = 'positive' if metrics['max_drawdown_pct'] < 10 else 'negative' if metrics['max_drawdown_pct'] > 20 else ''
-        
-        win_rate_class = 'positive' if metrics['win_rate_analyzer_pct'] > 50 else 'negative' if metrics['win_rate_analyzer_pct'] < 40 else ''
-        
-        avg_return_class = 'positive' if metrics['avg_trade_pnl_pct_strat'] > 0 else 'negative'
-        avg_return_sign = '+' if metrics['avg_trade_pnl_pct_strat'] > 0 else ''
-
-        # Create HTML report
-        html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <style>
-        body {{
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f7f7f7;
-            color: #333;
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        header {{
-            background-color: #2c3e50;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 5px 5px 0 0;
-        }}
-        .metrics-container {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-top: 20px;
-        }}
-        .metric-card {{
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            padding: 20px;
-            flex: 1;
-            min-width: 250px;
-        }}
-        .metric-title {{
-            font-size: 1.2em;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #2c3e50;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-        }}
-        .metric-item {{
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }}
-        .metric-label {{
-            color: #7f8c8d;
-        }}
-        .metric-value {{
-            font-weight: bold;
-        }}
-        .positive {{
-            color: #27ae60;
-        }}
-        .negative {{
-            color: #e74c3c;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background-color: white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            border-radius: 5px;
-        }}
-        th, td {{
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }}
-        th {{
-            background-color: #f5f5f5;
-            font-weight: bold;
-            color: #2c3e50;
-        }}
-        tr:hover {{
-            background-color: #f9f9f9;
-        }}
-        .parameters {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 20px;
-        }}
-        .parameter {{
-            background-color: #eee;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            display: flex;
-            align-items: center;
-        }}
-        .parameter-name {{
-            font-weight: bold;
-            margin-right: 5px;
-        }}
-        .summary-title {{
-            margin-top: 30px;
-            font-size: 1.5em;
-            color: #2c3e50;
-        }}
-        .symbols-list {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 10px;
-        }}
-        .symbol-tag {{
-            background-color: #3498db;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 0.9em;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>{title}</h1>
-            <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        </header>
-        
-        <div class="summary-title">Portfolio Symbols</div>
-        <div class="symbols-list">
-            {' '.join([f'<span class="symbol-tag">{symbol}</span>' for symbol in symbols])}
-        </div>
-
-        <div class="summary-title">Strategy Parameters</div>
-        <div class="parameters">
-            <div class="parameter"><span class="parameter-name">Initial Cash:</span> ${metrics['initial_cash']:.2f}</div>
-            <div class="parameter"><span class="parameter-name">Position Size:</span> {strategy.params.position_size_pct * 100:.0f}%</div>
-            <div class="parameter"><span class="parameter-name">BB Length:</span> {strategy.params.bb_length}</div>
-            <div class="parameter"><span class="parameter-name">BB Std:</span> {strategy.params.bb_std}</div>
-            <div class="parameter"><span class="parameter-name">RSI Length:</span> {strategy.params.rsi_length}</div>
-            <div class="parameter"><span class="parameter-name">RSI Oversold:</span> {strategy.params.rsi_oversold}</div>
-            <div class="parameter"><span class="parameter-name">Stop Loss:</span> {strategy.params.stop_loss_pct * 100:.1f}%</div>
-            <div class="parameter"><span class="parameter-name">Take Profit:</span> {strategy.params.take_profit_pct * 100:.1f}%</div>
-        </div>
-        
-        <div class="summary-title">Performance Summary</div>
-        <div class="metrics-container">
-            <div class="metric-card">
-                <div class="metric-title">Portfolio Performance</div>
-                <div class="metric-item">
-                    <span class="metric-label">Initial Cash</span>
-                    <span class="metric-value">${metrics['initial_cash']:.2f}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Final Value</span>
-                    <span class="metric-value">${metrics['final_value']:.2f}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Total Return</span>
-                    <span class="metric-value {total_return_class}">{total_return_sign}{abs(metrics['total_return_pct']):.2f}%</span>
-                </div>
-            </div>
-            
-            <div class="metric-card">
-                <div class="metric-title">Risk Metrics</div>
-                <div class="metric-item">
-                    <span class="metric-label">Sharpe Ratio</span>
-                    <span class="metric-value {sharpe_class}">{metrics['sharpe_ratio'] if metrics['sharpe_ratio'] is not None else 'N/A'}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Max Drawdown</span>
-                    <span class="metric-value {drawdown_class}">{metrics['max_drawdown_pct']:.2f}%</span>
-                </div>
-            </div>
-            
-            <div class="metric-card">
-                <div class="metric-title">Trade Statistics</div>
-                <div class="metric-item">
-                    <span class="metric-label">Total Trades</span>
-                    <span class="metric-value">{metrics['total_trades_analyzer']}</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Win Rate</span>
-                    <span class="metric-value {win_rate_class}">{metrics['win_rate_analyzer_pct']:.1f}%</span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Avg Trade Return</span>
-                    <span class="metric-value {avg_return_class}">{avg_return_sign}{abs(metrics['avg_trade_pnl_pct_strat']):.2f}%</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-        # Save the report
-        if report_path is None:
-            report_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                f"portfolio_backtest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-            )
-            
-        with open(report_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-            
-        logger.info(f"Generated portfolio backtest report: {report_path}")
-        return report_path
-
-    def generate_report(
-        self, 
-        strategy: bt.Strategy, 
-        metrics: Dict,
-        report_path: Optional[str] = None
-    ) -> str:
-        """
-        Generate HTML report for backtest results.
-        
-        Args:
-            strategy: Backtrader strategy instance
-            metrics: Metrics dictionary
-            report_path: Path to save the report (optional)
-            
-        Returns:
-            Path to the generated report
-        """
-        # If no path specified, save to current directory
-        if not report_path:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            report_path = os.path.join(
-                os.getcwd(), 
-                f"backtest_report_{timestamp}.html"
-            )
-        
-        # Ensure metrics is a dictionary
-        if not isinstance(metrics, dict):
-            logger.warning("Metrics is not a dictionary, creating default metrics")
-            metrics = {
-                'initial_cash': 0.0,
-                'final_value': 0.0,
-                'total_return_pct': 0.0,
-                'sharpe_ratio': 0.0,
-                'max_drawdown_pct': 0.0,
-                'total_trades_analyzer': 0,
-                'win_rate_analyzer_pct': 0.0,
-                'wins_analyzer': 0,
-                'losses_analyzer': 0,
-                'avg_trade_pnl_pct_strat': 0.0,
-                'sum_pnl_pct_strat': 0.0,
-                'total_trades_strat': 0,
-                'winning_trades_strat': 0,
-                'losing_trades_strat': 0,
-                'buy_signals': 0,
-                'sell_signals': 0,
-            }
-        
-        # Ensure all required keys exist in metrics
-        default_metrics = {
-            'initial_cash': 0.0,
-            'final_value': 0.0,
-            'total_return_pct': 0.0,
-            'sharpe_ratio': 0.0,
-            'max_drawdown_pct': 0.0,
-            'total_trades_analyzer': 0,
-            'win_rate_analyzer_pct': 0.0,
-            'wins_analyzer': 0,
-            'losses_analyzer': 0,
-            'avg_trade_pnl_pct_strat': 0.0,
-            'sum_pnl_pct_strat': 0.0,
-            'total_trades_strat': 0,
-            'winning_trades_strat': 0,
-            'losing_trades_strat': 0,
-            'buy_signals': 0,
-            'sell_signals': 0,
-        }
-        
-        # Update default metrics with actual values
-        for key in default_metrics:
-            if key not in metrics or metrics[key] is None:
-                metrics[key] = default_metrics[key]
-        
-        # Generate trade rows
-        trade_rows = self._generate_trade_rows(strategy)
-        
-        # Determine CSS classes based on metrics
-        total_return_class = 'positive' if metrics['total_return_pct'] >= 0 else 'negative'
-        total_return_sign = '+' if metrics['total_return_pct'] >= 0 else ''
-        
-        sharpe_class = 'positive' if metrics['sharpe_ratio'] >= 1 else 'negative' if metrics['sharpe_ratio'] < 0.5 else ''
-        sharpe_sign = '+' if metrics['sharpe_ratio'] > 0 else ''
-        
-        drawdown_class = 'positive' if metrics['max_drawdown_pct'] < 10 else 'negative' if metrics['max_drawdown_pct'] > 20 else ''
-        
-        win_rate_class = 'positive' if metrics['win_rate_analyzer_pct'] > 50 else 'negative' if metrics['win_rate_analyzer_pct'] < 40 else ''
-        
-        avg_return_class = 'positive' if metrics['avg_trade_pnl_pct_strat'] > 0 else 'negative'
-        avg_return_sign = '+' if metrics['avg_trade_pnl_pct_strat'] > 0 else ''
-
-        # Create HTML report
-        html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>Crypton Backtest Report</title>
-    <style>
-        body {{ 
-            font-family: Arial, sans-serif; 
-            margin: 20px; 
-            line-height: 1.6;
-            color: #333;
-        }}
-        h1, h2, h3 {{ 
-            color: #2c3e50;
-            margin-top: 1.5em;
-        }}
-        h1 {{ border-bottom: 2px solid #eee; padding-bottom: 10px; }}
-        h2 {{ border-bottom: 1px solid #f0f0f0; padding-bottom: 5px; }}
-        table {{ 
-            border-collapse: collapse; 
-            width: 100%; 
-            margin: 15px 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        th, td {{ 
-            text-align: left; 
-            padding: 10px 12px; 
-            border: 1px solid #e0e0e0; 
-        }}
-        th {{ 
-            background-color: #f5f7fa;
-            font-weight: 600;
-            color: #2c3e50;
-        }}
-        tr:nth-child(even) {{ background-color: #f9fafc; }}
-        tr:hover {{ background-color: #f0f4f8; }}
-        .metric-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }}
-        .metric-card {{
-            background: #fff;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border: 1px solid #e0e6ed;
-        }}
-        .metric-title {{
-            font-size: 1.1em;
-            font-weight: 600;
-            margin: 0 0 15px 0;
-            color: #2c3e50;
-            border-bottom: 1px solid #eaeff5;
-            padding-bottom: 8px;
-        }}
-        .metric-item {{
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            padding: 8px 0;
-            border-bottom: 1px solid #f5f7fa;
-        }}
-        .metric-item:last-child {{
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }}
-        .metric-label {{
-            color: #7f8c8d;
-            font-size: 0.92em;
-        }}
-        .metric-value {{
-            font-weight: 500;
-            font-size: 0.95em;
-        }}
-        .positive {{ color: #27ae60; }}
-        .negative {{ color: #e74c3c; }}
-        .neutral {{ color: #7f8c8d; }}
-        .text-right {{ text-align: right; }}
-        .text-center {{ text-align: center; }}
-        .text-muted {{ color: #95a5a6; }}
-    </style>
-</head>
-<body>
-    <h1>Crypton Backtest Report</h1>
-    <p class="text-muted">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-    <h2>Performance Summary</h2>
-    <div class="metric-grid">
-        <div class="metric-card">
-            <div class="metric-title">📊 Portfolio</div>
-            <div class="metric-item">
-                <span class="metric-label">Initial Capital</span>
-                <span class="metric-value">${metrics['initial_cash']:,.2f}</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Final Value</span>
-                <span class="metric-value">${metrics['final_value']:,.2f}</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Total Return</span>
-                <span class="metric-value {total_return_class}">{total_return_sign}{abs(metrics['total_return_pct']):.2f}%</span>
-            </div>
-        </div>
-        
-        <div class="metric-card">
-            <div class="metric-title">📈 Risk & Performance</div>
-            <div class="metric-item">
-                <span class="metric-label">Sharpe Ratio</span>
-                <span class="metric-value {sharpe_class}">{sharpe_sign}{metrics['sharpe_ratio']:.2f}</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Max Drawdown</span>
-                <span class="metric-value {drawdown_class}">{metrics['max_drawdown_pct']:.2f}%</span>
-            </div>
-        </div>
-        
-        <div class="metric-card">
-            <div class="metric-title">📊 Trade Statistics</div>
-            <div class="metric-item">
-                <span class="metric-label">Total Trades</span>
-                <span class="metric-value">{metrics['total_trades_analyzer']}</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Win Rate</span>
-                <span class="metric-value {win_rate_class}">{metrics['win_rate_analyzer_pct']:.1f}%</span>
-            </div>
-            <div class="metric-item">
-                <span class="metric-label">Avg Trade Return</span>
-                <span class="metric-value {avg_return_class}">{avg_return_sign}{abs(metrics['avg_trade_pnl_pct_strat']):.2f}%</span>
-            </div>
-        </div>
-    </div>
-
-    <h2>Trade History</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Entry Time</th>
-                <th class="text-right">Entry Price</th>
-                <th class="text-right">Size</th>
-                <th class="text-right">Entry RSI</th>
-                <th>Exit Time</th>
-                <th class="text-right">Exit Price</th>
-                <th class="text-right">Exit RSI</th>
-                <th class="text-right">P/L %</th>
-                <th>Reason</th>
-            </tr>
-        </thead>
-        <tbody>
-            {trade_rows}
-        </tbody>
-    </table>
-</body>
-</html>"""
-        
-        # Write to file
-        with open(report_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        
-        logger.info(f"Generated backtest report: {report_path}")
-        return report_path
-    
-    def _generate_trade_rows(self, strategy: bt.Strategy) -> str:
-        """
-        Generate HTML table rows for detailed trade analysis.
-        
-        Args:
-            strategy: Backtrader strategy instance with trade data
-            
-        Returns:
-            HTML table rows as string
-        """
-        if not hasattr(strategy, 'trades') or not strategy.trades:
-            return "<tr><td colspan='10' style='text-align: center;'>No trades recorded</td></tr>"
-        
-        rows = []
-        for i, trade in enumerate(strategy.trades, 1):
-            # Get entry data
-            entry_time = trade.get('entry_time', '').strftime('%Y-%m-%d %H:%M') if trade.get('entry_time') else 'N/A'
-            entry_price = trade.get('executed_entry_price', trade.get('entry_price', 0))
-            entry_price_str = f"{entry_price:.4f}" if entry_price else 'N/A'
-            
-            entry_rsi = f"{trade.get('entry_indicators', {}).get('rsi', 0):.2f}" if trade.get('entry_indicators', {}).get('rsi') is not None else 'N/A'
-            entry_bb_lower = f"{trade.get('entry_indicators', {}).get('bb_lower', 0):.4f}" if trade.get('entry_indicators', {}).get('bb_lower') is not None else 'N/A'
-            entry_bb_upper = f"{trade.get('entry_indicators', {}).get('bb_upper', 0):.4f}" if trade.get('entry_indicators', {}).get('bb_upper') is not None else 'N/A'
-            
-            # Get exit data
-            exit_time = trade.get('exit_time', '').strftime('%Y-%m-%d %H:%M') if trade.get('exit_time') else 'N/A'
-            exit_price = trade.get('executed_exit_price', trade.get('exit_price', 0))
-            exit_price_str = f"{exit_price:.4f}" if exit_price else 'N/A'
-            
-            exit_rsi = f"{trade.get('exit_indicators', {}).get('rsi', 0):.2f}" if trade.get('exit_indicators', {}).get('rsi') is not None else 'N/A'
-            
-            # Get trade size and calculate position value
-            trade_size = trade.get('size', 0)
-            position_value = trade_size * entry_price if trade_size and entry_price else 0
-            
-            # Calculate result and determine style
-            result = ''
-            style = ''
-            pnl = 0
-            
-            if 'profit_pct' in trade and trade['profit_pct'] is not None:
-                pnl = trade['profit_pct']
-                result = f"+{pnl:.2f}%"
-                style = 'color: #00aa00; font-weight: bold;'
-            elif 'loss_pct' in trade and trade['loss_pct'] is not None:
-                pnl = -trade['loss_pct']
-                result = f"-{trade['loss_pct']:.2f}%"
-                style = 'color: #ff0000; font-weight: bold;'
-                
-            # Get exit reason
-            exit_reason = trade.get('exit_reason', 'UNKNOWN').replace('_', ' ').title()
-            
-            # Determine the format specifier for trade_size
-            trade_size_format_specifier = '.4f' if trade_size < 1 else '.2f'
-
-            # Generate row with all trade details
-            row = f"""
-            <tr style='border-bottom: 1px solid #ddd;'>
-                <td style='padding: 8px; border: 1px solid #ddd;'>{i}</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>{entry_time}</td>
-                <td style='padding: 8px; text-align: right; border: 1px solid #ddd;'>{entry_price_str}</td>
-                <td style='padding: 8px; text-align: right; border: 1px solid #ddd;'>{trade_size:{trade_size_format_specifier}}</td>
-                <td style='padding: 8px; text-align: right; border: 1px solid #ddd;'>{entry_rsi}</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>{exit_time}</td>
-                <td style='padding: 8px; text-align: right; border: 1px solid #ddd;'>{exit_price_str}</td>
-                <td style='padding: 8px; text-align: right; border: 1px solid #ddd;'>{exit_rsi}</td>
-                <td style='padding: 8px; text-align: right; border: 1px solid #ddd; {style}'>{result}</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>{exit_reason}</td>
-            </tr>
-            """
-            rows.append(row)
-        
-        return '\n'.join(rows)

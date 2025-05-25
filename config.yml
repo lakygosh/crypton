@@ -1,0 +1,31 @@
+# Dodajte ovo u config.yml
+initial_cash: 1000.0
+symbols:
+  - BTC/USDT
+  - ETH/USDT
+  - SUI/USDT
+interval: 15m
+bb:
+  length: 20
+  std: 2
+rsi:
+  length: 14
+risk:
+  max_open_positions: 10
+  stop_loss_pct: 0.05
+  take_profit:
+    tier1_pct: 0.02  # 2% first tier
+    tier2_pct: 0.03  # 3% second tier
+    tier3_pct: 0.04  # 4% third tier
+    tier1_size_pct: 0.5  # Sell 33% at first tier
+    tier2_size_pct: 0.5  # Sell 33% at second tier
+    tier3_size_pct: 1  # Sell 34% at third tier (remaining)
+  position_size_pct: 0.333  # % of equity per trade
+  daily_loss_cap_pct: 0.05  # 5% daily loss triggers pause
+cool_down:
+  hours: 15m  # Minimum time between trades for same symbol
+
+# Dodajte ovu sekciju za konfigurisanje vremenskog perioda
+backtest:
+  start_date: "2025-04-01" 
+  end_date: "2025-04-09"
