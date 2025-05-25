@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   crypton:
-    image: ${DOCKER_USERNAME:-username}/crypton:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: crypton
     restart: unless-stopped
     volumes:
