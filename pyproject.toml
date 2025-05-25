@@ -1,14 +1,12 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "crypton"
 version = "0.1.0"
 description = "Automated crypto trading bot using Bollinger Bands and RSI"
-authors = [
-    {name = "Lazar Gošić", email = "lazar22.gosic2@gmail.com"}
-]
+authors = [ {name = "Lazar Gošić", email = "lazar22.gosic2@gmail.com"} ]
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [
@@ -22,13 +20,13 @@ dependencies = [
     "python-binance>=1.0.0",
     "pandas>=2.0.0",
     "pandas-ta==0.3.14b0",
+    "numpy==1.24.4",
     "backtrader>=1.9.70",
     "loguru>=0.6.0",
     "python-dotenv>=1.0.0",
     "prometheus-client>=0.14.0",
     "pyyaml>=6.0.0",
-    "slack-sdk>=3.20.0",
-    "numpy==1.24.4"
+    "slack-sdk>=3.20.0"
 ]
 
 [project.optional-dependencies]
@@ -39,8 +37,11 @@ dev = [
     "black>=23.0.0",
     "isort>=5.10.0",
     "flake8>=6.0.0",
-    "mypy>=1.0.0",
+    "mypy>=1.0.0"
 ]
+
+[tool.setuptools]
+packages = ["crypton", "performances"]
 
 [tool.black]
 line-length = 88
@@ -62,8 +63,5 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 markers = [
     "unit: marks test as a unit test",
-    "integration: marks test as an integration test",
+    "integration: marks test as an integration test"
 ]
-
-[tool.setuptools]
-packages = ["crypton", "performances"]
