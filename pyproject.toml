@@ -21,7 +21,7 @@ dependencies = [
     "ccxt>=4.0.0",
     "python-binance>=1.0.0",
     "pandas>=2.0.0",
-    "pandas-ta>=0.3.0",
+    "pandas-ta==0.3.14b0",
     "backtrader>=1.9.70",
     "loguru>=0.6.0",
     "python-dotenv>=1.0.0",
