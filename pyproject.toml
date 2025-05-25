@@ -17,7 +17,7 @@ classifiers = [
 
 dependencies = [
     "ccxt>=4.0.0",
-    "python-binance>=1.0.0",
+    "python-binance==0.7.12",
     "pandas>=2.0.0",
     "pandas-ta==0.3.14b0",
     "numpy==1.26.4",
