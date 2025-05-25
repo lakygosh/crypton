@@ -18,6 +18,7 @@ COPY . .
 # Upgrade pip and install build tool
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir build && \
+    pip install --no-cache-dir numpy==1.24.4 && \
     pip install --no-cache-dir .
 
 # Stage 2: Runtime
