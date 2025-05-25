@@ -1,6 +1,6 @@
 # Multi-stage build for Crypton trading bot
 # Stage 1: Builder
-FROM python:3.12-alpine AS builder
+FROM python:3.12-slim AS builder
 
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev python3-dev libffi-dev
@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
 # Stage 2: Runtime
-FROM python:3.12-alpine
+FROM python:3.12-slim
 
 # Install runtime dependencies
 RUN apk add --no-cache tzdata ca-certificates
