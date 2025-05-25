@@ -7,15 +7,20 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     libssl-dev \
     python3-dev \
+    python3-pip \
+    python3-setuptools \
+    python3-wheel \
+    tzdata \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy project files (pyproject.toml + source)
+# Copy project files
 COPY . .
 
-# Upgrade pip and install build tool
+# Upgrade pip and install requirements in correct order
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir build && \
     pip install --no-cache-dir numpy==1.24.4 && \
@@ -30,7 +35,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# Create non-root user and directories
 RUN addgroup --system crypton && \
     adduser --system --ingroup crypton crypton && \
     mkdir -p /home/crypton/app /home/crypton/data /home/crypton/logs && \
@@ -44,7 +49,7 @@ COPY . .
 # Set permissions
 RUN chown -R crypton:crypton /home/crypton/app
 
-# Switch to non-root user
+# Use non-root user
 USER crypton
 
 # Environment
@@ -52,9 +57,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=UTC
 
-# Volumes
+# Mountable volumes
 VOLUME ["/home/crypton/data", "/home/crypton/logs"]
 
-# Entry point
+# Default entry
 ENTRYPOINT ["python", "-m", "crypton.main"]
 CMD ["--help"]
