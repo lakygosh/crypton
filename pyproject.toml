@@ -20,7 +20,7 @@ dependencies = [
     "python-binance>=1.0.0",
     "pandas>=2.0.0",
     "pandas-ta==0.3.14b0",
-    "numpy==1.24.4",
+    "numpy==1.26.4",
     "backtrader>=1.9.70",
     "loguru>=0.6.0",
     "python-dotenv>=1.0.0",

@@ -21,7 +21,7 @@
     
     # Python dependencies (install numpy first so pandas‑ta works)
     RUN pip install --no-cache-dir --upgrade pip setuptools wheel build && \
-        pip install --no-cache-dir numpy==1.24.4 && \
+        pip install --no-cache-dir numpy==1.26.4 && \
         pip install --no-cache-dir .
     
     # -------- Stage 2: runtime --------
