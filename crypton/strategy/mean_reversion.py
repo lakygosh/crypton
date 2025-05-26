@@ -160,8 +160,22 @@ class MeanReversionStrategy:
                     logger.info(f"{symbol} is in cool-down period. {time_since_last_trade.total_seconds() / 3600:.2f} hours since last trade.")
             
             if not in_cooldown:
+                # Log values for the last few candles
+                last_candles = df.iloc[-5:] if len(df) >= 5 else df
+                for i, row in last_candles.iterrows():
+                    logger.info(f"Candle {i} - Time: {row.name}, Close: {row['close']:.4f}, BBL: {row['BBL']:.4f}, RSI: {row['RSI']:.2f}")
+                    logger.info(f"  Conditions: Price <= BBL: {row['close'] <= row['BBL']}, RSI < {self.rsi_oversold}: {row['RSI'] < self.rsi_oversold}")
+                
                 # Generate BUY signals - still use Bollinger Bands + RSI for entry
-                df.loc[(df['close'] <= df['BBL']) & (df['RSI'] < self.rsi_oversold), 'signal'] = SignalType.BUY.value
+                buy_condition = (df['close'] <= df['BBL']) & (df['RSI'] < self.rsi_oversold)
+                df.loc[buy_condition, 'signal'] = SignalType.BUY.value
+                
+                # Log which rows generated signals
+                signal_rows = df[buy_condition]
+                if not signal_rows.empty:
+                    logger.info(f"Buy signals generated at rows:")
+                    for i, row in signal_rows.iterrows():
+                        logger.info(f"  Row {i}: Close={row['close']:.4f}, BBL={row['BBL']:.4f}, RSI={row['RSI']:.2f}")
                 
                 # For SELL signals, check if we have an open position and if current price is above entry price by profit target %
                 position = self.positions.get(symbol, {})
@@ -234,13 +248,27 @@ class MeanReversionStrategy:
             # Generate signals after ensuring all indicators are present
             df = self.generate_signals(df, symbol, current_time)
             
-            # Get the last (most recent) row
+            # Check if any of the last 3 candles have BUY signals
+            recent_candles = df.iloc[-3:] if len(df) >= 3 else df
+            buy_signals = (recent_candles['signal'] == SignalType.BUY.value).sum()
+            sell_signals = (recent_candles['signal'] == SignalType.SELL.value).sum()
+            
+            # Get the last (most recent) row for price information
             last_row = df.iloc[-1]
-            signal_value = last_row.get('signal', SignalType.NEUTRAL.value)
             price = last_row.get('close')
             
-            # Convert string signal to enum
-            signal = SignalType(signal_value)
+            # Determine signal based on recent candles
+            if buy_signals > 0:
+                signal = SignalType.BUY
+                logger.info(f"Found {buy_signals} BUY signals in the last {len(recent_candles)} candles for {symbol}")
+            elif sell_signals > 0:
+                signal = SignalType.SELL
+                logger.info(f"Found {sell_signals} SELL signals in the last {len(recent_candles)} candles for {symbol}")
+            else:
+                signal = SignalType.NEUTRAL
+                logger.info(f"No trade signals found in the last {len(recent_candles)} candles for {symbol}")
+            
+            logger.info(f"Final signal determined for {symbol}: {signal.name} at price {price}")
             
             # Update position and last trade time if a BUY signal is generated
             if signal == SignalType.BUY and current_time:

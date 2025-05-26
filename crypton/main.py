@@ -365,24 +365,37 @@ def run_paper_trade(config_path: Optional[str] = None):
                             df = df.iloc[-100:]
                         symbol_data[symbol] = df
                 # Check for signals
+                logger.info(f"Checking for signal on {symbol} with DataFrame of shape {df.shape}")
                 signal, price, data = strategy.check_for_signal(df, symbol)
+                logger.info(f"Signal check result for {symbol}: {signal}")
+                
                 # Execute trades based on signals
                 if signal == SignalType.BUY:
+                    logger.info(f"Processing BUY signal for {symbol} at price {price}")
                     quantity, notional = execution.calculate_position_size(symbol, price)
-                    order = execution.place_market_order(
-                        symbol=symbol,
-                        side=OrderSide.BUY,
-                        quantity=quantity
-                    )
-                    if order:
-                        logger.info(f"Executed BUY order for {symbol}: {quantity} @ {price}")
-                        notify_trade_execution(
+                    logger.info(f"Calculated position size for {symbol}: {quantity} units (≈{notional} USDT)")
+                    
+                    try:
+                        order = execution.place_market_order(
                             symbol=symbol,
-                            side="BUY",
-                            price=price,
-                            quantity=quantity,
-                            order_id=order.get("orderId")
+                            side=OrderSide.BUY,
+                            quantity=quantity
                         )
+                        logger.info(f"Order placement result: {order}")
+                        
+                        if order:
+                            logger.info(f"Executed BUY order for {symbol}: {quantity} @ {price}")
+                            notify_trade_execution(
+                                symbol=symbol,
+                                side="BUY",
+                                price=price,
+                                quantity=quantity,
+                                order_id=order.get("orderId")
+                            )
+                        else:
+                            logger.warning(f"Order placement returned empty result for {symbol}")
+                    except Exception as e:
+                        logger.error(f"Error placing buy order for {symbol}: {e}", exc_info=True)
                 elif signal == SignalType.SELL:
                     positions = execution.open_positions
                     if symbol in positions:

@@ -14,9 +14,9 @@ risk:
   max_open_positions: 10
   stop_loss_pct: 0.05
   take_profit:
-    tier1_pct: 0.02  # 2% first tier
-    tier2_pct: 0.03  # 3% second tier
-    tier3_pct: 0.04  # 4% third tier
+    tier1_pct: 0.01  # 2% first tier
+    tier2_pct: 0.02  # 3% second tier
+    tier3_pct: 0.03  # 4% third tier
     tier1_size_pct: 0.5  # Sell 33% at first tier
     tier2_size_pct: 0.5  # Sell 33% at second tier
     tier3_size_pct: 1  # Sell 34% at third tier (remaining)

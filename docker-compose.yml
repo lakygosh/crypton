@@ -25,4 +25,5 @@ services:
       - TZ=${TZ:-UTC}
 
     # Default command (overrides Dockerfile CMD)
-    command: trade --mode ${MODE:-test} --config /home/crypton/app/config.yml
+    #command: trade --mode ${MODE:-test} --config /home/crypton/app/config.yml
+    command: paper --config /home/crypton/app/config.yml

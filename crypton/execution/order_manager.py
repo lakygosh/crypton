@@ -59,10 +59,19 @@ class ExecutionEngine:
             api_secret: Binance API secret
             testnet: Whether to use the testnet (default: True)
         """
-        # Get API credentials from environment if not provided
-        self.api_key = api_key or os.getenv("BINANCE_API_KEY")
-        self.api_secret = api_secret or os.getenv("BINANCE_API_SECRET")
         self.testnet = testnet
+        
+        # Get API credentials from environment if not provided
+        if self.testnet:
+            # Use testnet-specific environment variables if available
+            self.api_key = api_key or os.getenv("BINANCE_TESTNET_API_KEY") or os.getenv("BINANCE_API_KEY")
+            self.api_secret = api_secret or os.getenv("BINANCE_TESTNET_API_SECRET") or os.getenv("BINANCE_API_SECRET")
+            logger.info("Using Binance Testnet environment")
+        else:
+            # For production, use the regular API key environment variables
+            self.api_key = api_key or os.getenv("BINANCE_API_KEY")
+            self.api_secret = api_secret or os.getenv("BINANCE_API_SECRET")
+            logger.info("Using Binance Production environment")
         
         if not self.api_key or not self.api_secret:
             logger.error("API credentials not provided. Order execution will not work.")
