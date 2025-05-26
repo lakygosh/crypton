@@ -383,46 +383,46 @@ class ExecutionEngine:
                 side=OrderSide.SELL.value,
                 type=OrderType.STOP_LOSS.value,
                 quantity=quantity,
-                stopPrice=sl_price,
-                price=sl_price  # Limit price
+                stopPrice=sl_price
+                # No price parameter for market orders
             )
             
             # Place take profit orders for each tier
             tp_orders = []
             
-            # Tier 1 take profit order (33% at 2%)
+            # Tier 1 take profit order
             self._respect_rate_limit()
             tp_tier1_order = self.client.create_order(
                 symbol=formatted_symbol,
                 side=OrderSide.SELL.value,
                 type=OrderType.TAKE_PROFIT.value,
                 quantity=tier1_qty,
-                stopPrice=tp_tier1_price,
-                price=tp_tier1_price  # Limit price
+                stopPrice=tp_tier1_price
+                # No price parameter for market orders
             )
             tp_orders.append(tp_tier1_order)
             
-            # Tier 2 take profit order (33% at 3%)
+            # Tier 2 take profit order
             self._respect_rate_limit()
             tp_tier2_order = self.client.create_order(
                 symbol=formatted_symbol,
                 side=OrderSide.SELL.value,
                 type=OrderType.TAKE_PROFIT.value,
                 quantity=tier2_qty,
-                stopPrice=tp_tier2_price,
-                price=tp_tier2_price  # Limit price
+                stopPrice=tp_tier2_price
+                # No price parameter for market orders
             )
             tp_orders.append(tp_tier2_order)
             
-            # Tier 3 take profit order (34% at 4%)
+            # Tier 3 take profit order
             self._respect_rate_limit()
             tp_tier3_order = self.client.create_order(
                 symbol=formatted_symbol,
                 side=OrderSide.SELL.value,
                 type=OrderType.TAKE_PROFIT.value,
                 quantity=tier3_qty,
-                stopPrice=tp_tier3_price,
-                price=tp_tier3_price  # Limit price
+                stopPrice=tp_tier3_price
+                # No price parameter for market orders
             )
             tp_orders.append(tp_tier3_order)
             
