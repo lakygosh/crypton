@@ -371,6 +371,12 @@ def run_paper_trade(config_path: Optional[str] = None):
                 
                 # Execute trades based on signals
                 if signal == SignalType.BUY:
+                    # Check if position is already open for this symbol
+                    positions = execution.open_positions
+                    if symbol in positions:
+                        logger.info(f"Skipping BUY signal for {symbol} - position already open with {positions[symbol]['quantity']} units")
+                        continue
+                    
                     logger.info(f"Processing BUY signal for {symbol} at price {price}")
                     quantity, notional = execution.calculate_position_size(symbol, price)
                     logger.info(f"Calculated position size for {symbol}: {quantity} units (≈{notional} USDT)")
@@ -528,6 +534,12 @@ def run_live_trade(config_path: Optional[str] = None):
                     if daily_loss > daily_loss_cap:
                         logger.warning("Daily loss cap reached. Skipping buy signal.")
                         notify_error("Daily loss cap reached", "Trading paused for 24 hours")
+                        continue
+                    
+                    # Check if position is already open for this symbol
+                    positions = execution.open_positions
+                    if symbol in positions:
+                        logger.info(f"Skipping BUY signal for {symbol} - position already open with {positions[symbol]['quantity']} units")
                         continue
                     
                     # Calculate position size

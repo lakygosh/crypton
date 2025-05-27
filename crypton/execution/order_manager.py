@@ -17,6 +17,7 @@ from binance.exceptions import BinanceAPIException
 from loguru import logger
 
 from crypton.utils.config import load_config
+from crypton.utils.trade_history import TradeHistoryManager
 
 
 class OrderSide(Enum):
@@ -126,8 +127,14 @@ class ExecutionEngine:
         self.last_request_time = 0
         self.min_request_interval = 0.05  # 50ms minimum between requests (20 requests per second)
         
+        # Initialize trade history manager
+        self.trade_history = TradeHistoryManager()
+        
         # Open positions tracking
         self.open_positions: Dict[str, Dict] = {}
+        
+        # Load existing positions from the exchange
+        self.load_open_positions()
         
         logger.info(f"Execution engine initialized with testnet={self.testnet}")
         logger.info(f"Risk parameters: max_positions={self.max_positions}, " +
@@ -288,7 +295,10 @@ class ExecutionEngine:
             # Format symbol (replace '/' if present)
             formatted_symbol = symbol.replace("/", "")
             
+            # Ensure we don't exceed API rate limits
             self._respect_rate_limit()
+            
+            # Place the order
             order = self.client.create_order(
                 symbol=formatted_symbol,
                 side=side.value,
@@ -296,24 +306,66 @@ class ExecutionEngine:
                 quantity=quantity
             )
             
-            logger.info(f"Placed {side.value} market order for {quantity} {symbol}: {order['orderId']}")
+            # Extract the price from the order fills
+            # For market orders, we need to calculate the average price
+            if 'fills' in order and order['fills']:
+                fills = order['fills']
+                total_cost = sum(float(fill['price']) * float(fill['qty']) for fill in fills)
+                total_qty = sum(float(fill['qty']) for fill in fills)
+                avg_price = total_cost / total_qty if total_qty > 0 else 0
+            else:
+                # Fallback - get current price
+                ticker = self.client.get_symbol_ticker(symbol=formatted_symbol)
+                avg_price = float(ticker['price'])
             
-            # Update open positions
-            if side == OrderSide.BUY and order.get("status") in [OrderStatus.FILLED.value, OrderStatus.PARTIALLY_FILLED.value]:
+            # Update position tracking
+            if side == OrderSide.BUY:
+                # Record the trade in history
+                self.trade_history.record_position_open(
+                    symbol=symbol,
+                    quantity=float(order['executedQty']),
+                    entry_price=avg_price,
+                    order_id=str(order['orderId']),
+                    timestamp=datetime.now().isoformat()
+                )
+                
+                # Update internal tracking
                 self.open_positions[symbol] = {
-                    "order_id": order["orderId"],
-                    "quantity": float(order["executedQty"]),
-                    "entry_price": float(order["fills"][0]["price"]) if order.get("fills") else 0.0,
-                    "entry_time": datetime.now(),
-                    "side": side.value
+                    "quantity": float(order['executedQty']),
+                    "entry_price": avg_price,
+                    "current_price": avg_price,
+                    "position_value": float(order['executedQty']) * avg_price,
+                    "unrealized_pnl": 0.0,
+                    "entry_time": datetime.now().isoformat(),
+                    "order_id": str(order['orderId']),
+                    "orders": {}
                 }
+                
+                logger.info(f"Placed {side.value} market order for {quantity} {symbol}: {order['orderId']}")
                 
                 # Place stop loss and take profit orders
                 self._place_sl_tp_orders(symbol)
-            
-            # Remove from open positions if selling
-            if side == OrderSide.SELL and symbol in self.open_positions:
+                
+            elif side == OrderSide.SELL and symbol in self.open_positions:
+                # Calculate profit/loss
+                position = self.open_positions[symbol]
+                entry_price = position['entry_price']
+                profit_loss = (avg_price - entry_price) * float(order['executedQty'])
+                
+                # Record the trade close in history
+                self.trade_history.record_position_close(
+                    symbol=symbol,
+                    exit_price=avg_price,
+                    exit_quantity=float(order['executedQty']),
+                    order_id=str(order['orderId']),
+                    profit_loss=profit_loss,
+                    exit_reason='signal',  # Can be 'signal', 'stop_loss', or 'take_profit'
+                    timestamp=datetime.now().isoformat()
+                )
+                
+                # Remove from open positions on sell
                 del self.open_positions[symbol]
+                logger.info(f"Closed position for {symbol} with P/L: {profit_loss:.2f} USDT")
             
             return order
             
@@ -547,6 +599,114 @@ class ExecutionEngine:
             logger.error(f"Error getting order status: {e}")
             return {}
     
+    def load_open_positions(self):
+        """
+        Load existing open positions from the exchange.
+        
+        This method queries the exchange for current positions and updates
+        the self.open_positions dictionary. It's called during initialization
+        to handle cases where the bot restarts with existing open positions.
+        Only positions for symbols configured in config.yml are tracked.
+        
+        If trade history data is available, it will be used for accurate entry prices.
+        """
+        logger.info("Loading existing positions from exchange...")
+        try:
+            # Get configured symbols from config
+            configured_symbols = self.config.get('symbols', ['BTC/USDT', 'ETH/USDT'])
+            # Create a set of base assets from configured symbols for faster lookups
+            configured_assets = {symbol.split('/')[0] for symbol in configured_symbols}
+            
+            logger.info(f"Looking for positions for configured symbols: {configured_symbols}")
+            
+            # First check trade history for positions
+            trade_history_positions = self.trade_history.get_open_positions()
+            logger.info(f"Found {len(trade_history_positions)} positions in trade history")
+            
+            # Get account information with current positions
+            self._respect_rate_limit()
+            account_info = self.client.get_account()
+            balances = account_info.get('balances', [])
+            
+            # Collect all non-zero balances for configured assets
+            non_zero_balances = {}
+            for balance in balances:
+                asset = balance['asset']
+                free = float(balance['free'])
+                locked = float(balance['locked'])
+                total = free + locked
+                
+                # Only consider assets with a non-zero balance that are in our configured symbols
+                if total > 0 and asset in configured_assets:
+                    non_zero_balances[asset] = total
+            
+            # Get current prices for these assets
+            if non_zero_balances:
+                self._respect_rate_limit()
+                prices = self.client.get_all_tickers()
+                price_dict = {item['symbol']: float(item['price']) for item in prices}
+                
+                # Update open positions dictionary
+                for asset, quantity in non_zero_balances.items():
+                    symbol = f"{asset}/USDT"  # Assume USDT as quote asset
+                    formatted_symbol = f"{asset}USDT"
+                    
+                    # Only process if this is a configured symbol
+                    if symbol in configured_symbols and formatted_symbol in price_dict:
+                        current_price = price_dict[formatted_symbol]
+                        
+                        # Check if we have this position in trade history
+                        if symbol in trade_history_positions:
+                            # Use the data from trade history for accurate entry price
+                            history_data = trade_history_positions[symbol]
+                            entry_price = history_data['entry_price']
+                            entry_time = history_data['entry_time']
+                            order_id = history_data.get('order_id', 'unknown')
+                            logger.info(f"Using trade history data for {symbol}: entry price {entry_price} from {entry_time}")
+                        else:
+                            # No history data, use current price as an estimate
+                            entry_price = current_price
+                            entry_time = datetime.now().isoformat()
+                            order_id = 'unknown'
+                            logger.info(f"No trade history for {symbol}, using current price {current_price} as entry price")
+                            
+                            # Since we detected a position but have no history, create one
+                            self.trade_history.record_position_open(
+                                symbol=symbol,
+                                quantity=quantity,
+                                entry_price=entry_price,
+                                order_id=order_id,
+                                timestamp=entry_time
+                            )
+                        
+                        position_value = quantity * current_price
+                        unrealized_pnl = (current_price - entry_price) * quantity
+                        
+                        # Add to open positions
+                        self.open_positions[symbol] = {
+                            "quantity": quantity,
+                            "entry_price": entry_price,
+                            "current_price": current_price,
+                            "position_value": position_value,
+                            "unrealized_pnl": unrealized_pnl,
+                            "entry_time": entry_time,
+                            "order_id": order_id,
+                            "orders": {}  # Will store SL/TP order IDs
+                        }
+                        
+                        logger.info(f"Loaded existing position for {symbol}: {quantity} @ {entry_price} " +
+                                  f"(current: {current_price}, P/L: {unrealized_pnl:.2f} USDT)")
+            
+            if self.open_positions:
+                logger.info(f"Loaded {len(self.open_positions)} existing positions for configured symbols")
+            else:
+                logger.info("No existing positions found for configured symbols")
+                
+        except BinanceAPIException as e:
+            logger.error(f"API error loading positions: {e}")
+        except Exception as e:
+            logger.error(f"Error loading positions: {e}")
+
     def check_daily_loss_cap(self) -> bool:
         """
         Check if the daily loss cap has been reached.
