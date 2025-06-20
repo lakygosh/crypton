@@ -124,39 +124,36 @@ class MeanReversionStrategy:
         current_time: Optional[datetime] = None
     ) -> pd.DataFrame:
         """
-        Generate trading signals based on the mean reversion strategy.
+        Generate trading signals based on mean reversion strategy.
+        Now only generates signals for the most recent candle to avoid showing
+        historical signals repeatedly.
         
         Args:
             df: DataFrame with price data and indicators
             symbol: Trading pair symbol
-            current_time: Current time (defaults to now)
+            current_time: Current time for cool-down checking
             
         Returns:
-            DataFrame with added 'signal' column
+            DataFrame with signals column added
         """
         try:
-            # Ensure dataframe has required columns
-            required_columns = ['close', 'BBL', 'BBU', 'RSI']
-            for col in required_columns:
-                if col not in df.columns:
-                    logger.error(f"Missing required column: {col}")
-                    df['signal'] = SignalType.NEUTRAL.value
-                    return df
-            
-            # Initialize signal column as NEUTRAL
+            # Initialize signal column with neutral values
             df['signal'] = SignalType.NEUTRAL.value
             
-            # Current time defaults to now
-            current_time = current_time or datetime.now()
+            # Check if we have enough data
+            if len(df) < 20:  # Need at least 20 periods for indicators
+                logger.warning(f"Insufficient data for {symbol}: {len(df)} candles")
+                return df
             
-            # Check if we're in the cool-down period
-            last_trade = self.last_trade_time.get(symbol)
+            # Check cool-down period for this symbol if current_time is provided
             in_cooldown = False
-            
-            if last_trade:
+            if current_time and symbol in self.last_trade_time:
+                last_trade = self.last_trade_time[symbol]
                 time_since_last_trade = current_time - last_trade
-                in_cooldown = time_since_last_trade < timedelta(hours=self.cool_down_hours, minutes=self.cool_down_minutes)
-                if in_cooldown:
+                cooldown_threshold = timedelta(hours=self.cool_down_hours, minutes=self.cool_down_minutes)
+                
+                if time_since_last_trade < cooldown_threshold:
+                    in_cooldown = True
                     logger.info(f"{symbol} is in cool-down period. {time_since_last_trade.total_seconds() / 3600:.2f} hours since last trade.")
             
             if not in_cooldown:
@@ -166,16 +163,16 @@ class MeanReversionStrategy:
                     logger.info(f"Candle {i} - Time: {row.name}, Close: {row['close']:.4f}, BBL: {row['BBL']:.4f}, RSI: {row['RSI']:.2f}")
                     logger.info(f"  Conditions: Price <= BBL: {row['close'] <= row['BBL']}, RSI < {self.rsi_oversold}: {row['RSI'] < self.rsi_oversold}")
                 
-                # Generate BUY signals - still use Bollinger Bands + RSI for entry
-                buy_condition = (df['close'] <= df['BBL']) & (df['RSI'] < self.rsi_oversold)
-                df.loc[buy_condition, 'signal'] = SignalType.BUY.value
+                # Only generate signals for the most recent candle to avoid repeated historical signals
+                latest_idx = df.index[-1]
+                latest_candle = df.iloc[-1]
                 
-                # Log which rows generated signals
-                signal_rows = df[buy_condition]
-                if not signal_rows.empty:
-                    logger.info(f"Buy signals generated at rows:")
-                    for i, row in signal_rows.iterrows():
-                        logger.info(f"  Row {i}: Close={row['close']:.4f}, BBL={row['BBL']:.4f}, RSI={row['RSI']:.2f}")
+                # Generate BUY signal for latest candle only
+                buy_condition = (latest_candle['close'] <= latest_candle['BBL']) and (latest_candle['RSI'] < self.rsi_oversold)
+                if buy_condition:
+                    df.loc[latest_idx, 'signal'] = SignalType.BUY.value
+                    logger.info(f"NEW Buy signal generated for latest candle:")
+                    logger.info(f"  Row {latest_idx}: Close={latest_candle['close']:.4f}, BBL={latest_candle['BBL']:.4f}, RSI={latest_candle['RSI']:.2f}")
                 
                 # For SELL signals, check if we have an open position and if current price is above entry price by profit target %
                 position = self.positions.get(symbol, {})
@@ -185,17 +182,23 @@ class MeanReversionStrategy:
                     # Calculate profit percentage
                     profit_threshold = entry_price * (1 + self.take_profit_pct)
                     
-                    # Generate sell signals based on profit target
-                    df.loc[df['close'] >= profit_threshold, 'signal'] = SignalType.SELL.value
+                    # Generate sell signal for latest candle only if profit target is hit
+                    if latest_candle['close'] >= profit_threshold:
+                        df.loc[latest_idx, 'signal'] = SignalType.SELL.value
+                        logger.info(f"NEW Sell signal generated for latest candle:")
+                        logger.info(f"  Row {latest_idx}: Close={latest_candle['close']:.4f}, Entry={entry_price:.4f}, Target={profit_threshold:.4f}")
                 else:
                     # If no position, we're looking to enter, not exit
                     pass
             
-            # Count signals
+            # Count signals in the entire dataframe (for logging purposes)
             buy_count = (df['signal'] == SignalType.BUY.value).sum()
             sell_count = (df['signal'] == SignalType.SELL.value).sum()
             
-            logger.info(f"Generated signals for {symbol}: {buy_count} BUY, {sell_count} SELL")
+            # Log how many signals are in the current dataframe and specifically for the latest candle
+            latest_signal = df.iloc[-1]['signal']
+            logger.info(f"Signal status for {symbol}: Latest candle signal = {latest_signal}")
+            logger.info(f"Total signals in dataframe: {buy_count} BUY, {sell_count} SELL (mostly historical)")
             
             return df
             
@@ -245,53 +248,55 @@ class MeanReversionStrategy:
                 logger.error(f"Missing indicators for {symbol}: {missing_indicators}")
                 return SignalType.NEUTRAL, None, None
             
+            # Set current time if not provided
+            if current_time is None:
+                current_time = datetime.now()
+            
             # Generate signals after ensuring all indicators are present
             df = self.generate_signals(df, symbol, current_time)
-            
-            # Check if any of the last 3 candles have BUY signals
-            recent_candles = df.iloc[-3:] if len(df) >= 3 else df
-            buy_signals = (recent_candles['signal'] == SignalType.BUY.value).sum()
-            sell_signals = (recent_candles['signal'] == SignalType.SELL.value).sum()
             
             # Get the last (most recent) row for price information
             last_row = df.iloc[-1]
             price = last_row.get('close')
             
-            # Determine signal based on recent candles
-            if buy_signals > 0:
+            # Check the signal for the most recent candle only
+            latest_signal = last_row.get('signal', SignalType.NEUTRAL.value)
+            
+            # Convert signal value to SignalType enum
+            if latest_signal == SignalType.BUY.value:
                 signal = SignalType.BUY
-                logger.info(f"Found {buy_signals} BUY signals in the last {len(recent_candles)} candles for {symbol}")
-            elif sell_signals > 0:
+                logger.info(f"ACTIVE BUY signal found for {symbol} at price {price}")
+            elif latest_signal == SignalType.SELL.value:
                 signal = SignalType.SELL
-                logger.info(f"Found {sell_signals} SELL signals in the last {len(recent_candles)} candles for {symbol}")
+                logger.info(f"ACTIVE SELL signal found for {symbol} at price {price}")
             else:
                 signal = SignalType.NEUTRAL
-                logger.info(f"No trade signals found in the last {len(recent_candles)} candles for {symbol}")
+                logger.info(f"No active trade signal for {symbol} at price {price}")
             
             logger.info(f"Final signal determined for {symbol}: {signal.name} at price {price}")
             
             # Update position and last trade time if a BUY signal is generated
-            if signal == SignalType.BUY and current_time:
+            if signal == SignalType.BUY:
                 self.last_trade_time[symbol] = current_time
                 # Track entry price for this symbol
                 self.positions[symbol] = {
                     'entry_price': price,
                     'entry_time': current_time
                 }
-                logger.info(f"Generated BUY signal for {symbol} at {price}")
+                logger.info(f"Updated position tracking for {symbol} - Entry: {price} at {current_time}")
             
             # Update last trade time if a SELL signal is generated
-            elif signal == SignalType.SELL and current_time:
+            elif signal == SignalType.SELL:
                 self.last_trade_time[symbol] = current_time
                 # If we have position information, calculate profit
                 if symbol in self.positions and 'entry_price' in self.positions[symbol]:
                     entry_price = self.positions[symbol]['entry_price']
                     profit_pct = (price / entry_price - 1) * 100
-                    logger.info(f"Generated SELL signal for {symbol} at {price}, profit: {profit_pct:.2f}%")
+                    logger.info(f"Position closed for {symbol} - Entry: {entry_price}, Exit: {price}, Profit: {profit_pct:.2f}%")
                     # Clear position data after selling
                     self.positions.pop(symbol, None)
                 else:
-                    logger.info(f"Generated SELL signal for {symbol} at {price}")
+                    logger.info(f"SELL signal for {symbol} but no position tracking found")
             
             return signal, price, last_row
             
