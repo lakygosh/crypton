@@ -49,7 +49,19 @@ class MeanReversionStrategy:
         # Trading parameters
         self.rsi_oversold = self.config.get('rsi', {}).get('oversold', 30)
         self.rsi_overbought = self.config.get('rsi', {}).get('overbought', 70)
-        self.take_profit_pct = self.config.get('risk', {}).get('take_profit_pct', 0.02)  # 2% profit target
+
+        # Graduated take-profit konfiguracija
+        tp_cfg = self.config.get("risk", {}).get("take_profit", {})
+        self.take_profit_tier1_pct = tp_cfg.get("tier1_pct", 0.01)
+        self.take_profit_tier2_pct = tp_cfg.get("tier2_pct", 0.02)
+        self.take_profit_tier3_pct = tp_cfg.get("tier3_pct", 0.03)
+
+        # Prepare list for iteraciju u generate_signals
+        self.tp_tiers = [
+            {"name": "tier1", "pct": self.take_profit_tier1_pct, "size": tp_cfg.get("tier1_size_pct", 0.5)},
+            {"name": "tier2", "pct": self.take_profit_tier2_pct, "size": tp_cfg.get("tier2_size_pct", 0.3)},
+            {"name": "tier3", "pct": self.take_profit_tier3_pct, "size": tp_cfg.get("tier3_size_pct", 1.0)},
+        ]
         
         # Cool-down period for trades (to avoid overtrading)
         cool_down_value = self.config.get('cool_down', {}).get('hours', 4)
@@ -93,7 +105,7 @@ class MeanReversionStrategy:
         logger.info("Mean reversion strategy initialized with parameters:")
         logger.info(f"  RSI oversold: {self.rsi_oversold}")
         logger.info(f"  RSI overbought: {self.rsi_overbought}")
-        logger.info(f"  Take profit: {self.take_profit_pct * 100:.1f}%")
+        logger.info("  Take-profit tiers: " + ", ".join([f"{t['name']}={t['pct']*100:.1f}%" for t in self.tp_tiers]))
         if self.cool_down_minutes > 0:
             logger.info(f"  Cool-down period: {self.cool_down_minutes} minutes")
         else:
@@ -110,18 +122,6 @@ class MeanReversionStrategy:
             logger.info("No existing positions found")
         
         self.trade_history = TradeHistoryManager()
-        
-        # Read take profit tiers
-        tp_cfg = (
-            self.config.get("risk", {})
-                      .get("take_profit", {})
-        )
-
-        self.tp_tiers = [
-            {"name": "tier1", "pct": tp_cfg.get("tier1_pct", 0.01), "size": tp_cfg.get("tier1_size_pct", 0.5)},
-            {"name": "tier2", "pct": tp_cfg.get("tier2_pct", 0.02), "size": tp_cfg.get("tier2_size_pct", 0.3)},
-            {"name": "tier3", "pct": tp_cfg.get("tier3_pct", 0.03), "size": tp_cfg.get("tier3_size_pct", 1.0)},
-        ]
     
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -219,15 +219,15 @@ class MeanReversionStrategy:
                             break                         # samo jedan tier po svijeći
                 
                 # Count signals in the entire dataframe (for logging purposes)
-                buy_count = (df['signal'] == SignalType.BUY.value).sum()
-                sell_count = (df['signal'] == SignalType.SELL.value).sum()
-                
+            buy_count = (df['signal'] == SignalType.BUY.value).sum()
+            sell_count = (df['signal'] == SignalType.SELL.value).sum()
+            
                 # Log how many signals are in the current dataframe and specifically for the latest candle
-                latest_signal = df.iloc[-1]['signal']
-                logger.info(f"Signal status for {symbol}: Latest candle signal = {latest_signal}")
-                logger.info(f"Total signals in dataframe: {buy_count} BUY, {sell_count} SELL (mostly historical)")
-                
-                return df
+            latest_signal = df.iloc[-1]['signal']
+            logger.info(f"Signal status for {symbol}: Latest candle signal = {latest_signal}")
+            logger.info(f"Total signals in dataframe: {buy_count} BUY, {sell_count} SELL (mostly historical)")
+            
+            return df
             
         except Exception as e:
             logger.error(f"Error generating signals: {e}")
@@ -296,30 +296,6 @@ class MeanReversionStrategy:
             elif latest_signal == SignalType.SELL.value:
                 signal = SignalType.SELL
                 logger.info(f"ACTIVE SELL signal found for {symbol} at price {price}")
-                tier_pct = last_row.get("sell_size_pct", 1.0)        # default = 100 %
-                tier_name = last_row.get("sell_tier", "full")
-                if symbol in execution.open_positions:
-                    full_qty = execution.open_positions[symbol]["quantity"]
-                    sell_qty = round(full_qty * tier_pct, 8)
-                    order = execution.place_market_order(
-                        symbol=symbol,
-                        side=OrderSide.SELL,
-                        quantity=sell_qty
-                    )
-                    if order:
-                        logger.info(f"Executed SELL ({tier_name}) {sell_qty}/{full_qty} for {symbol} @ {price}")
-                        execution.open_positions[symbol]["quantity"] -= sell_qty
-                        # snimi TP u istoriju
-                        trade_history.record_partial_take_profit(
-                            symbol=symbol,
-                            price=price,
-                            quantity=sell_qty,
-                            order_id=str(order["orderId"]),
-                            tier=int(tier_name[-1])
-                        )
-                        # ako je sve zatvoreno -> close
-                        if execution.open_positions[symbol]["quantity"] <= 0:
-                            execution.open_positions.pop(symbol, None)
             else:
                 signal = SignalType.NEUTRAL
                 logger.info(f"No active trade signal for {symbol} at price {price}")

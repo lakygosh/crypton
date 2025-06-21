@@ -343,10 +343,12 @@ class ExecutionEngine:
                 
                 logger.info(f"Placed {side.value} market order for {quantity} {symbol}: {order['orderId']}")
                 
-                # Place stop loss and take profit orders
-                self._place_sl_tp_orders(symbol)
+                # Server-side SL/TP disabled – strategy generates exits
                 
             elif side == OrderSide.SELL and symbol in self.open_positions:
+                # Cancel any existing SL/TP orders before selling
+                self._cancel_sl_tp_orders(symbol)
+                
                 # Calculate profit/loss
                 position = self.open_positions[symbol]
                 entry_price = position['entry_price']
@@ -512,6 +514,61 @@ class ExecutionEngine:
         except Exception as e:
             logger.error(f"Error placing SL/TP orders: {e}")
             return {}, {}
+
+    def _cancel_sl_tp_orders(self, symbol: str) -> bool:
+        """
+        Cancel existing stop loss and take profit orders for a symbol.
+        
+        Args:
+            symbol: Trading pair symbol
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            position = self.open_positions.get(symbol)
+            if not position:
+                return True
+            
+            # Format symbol (replace '/' if present)
+            formatted_symbol = symbol.replace("/", "")
+            
+            # List of order IDs to cancel
+            order_ids_to_cancel = []
+            
+            # Collect SL/TP order IDs if they exist
+            if "sl_order_id" in position:
+                order_ids_to_cancel.append(position["sl_order_id"])
+            if "tp_tier1_order_id" in position:
+                order_ids_to_cancel.append(position["tp_tier1_order_id"])
+            if "tp_tier2_order_id" in position:
+                order_ids_to_cancel.append(position["tp_tier2_order_id"])
+            if "tp_tier3_order_id" in position:
+                order_ids_to_cancel.append(position["tp_tier3_order_id"])
+            
+            # Cancel each order
+            canceled_count = 0
+            for order_id in order_ids_to_cancel:
+                try:
+                    self._respect_rate_limit()
+                    self.client.cancel_order(symbol=formatted_symbol, orderId=order_id)
+                    canceled_count += 1
+                    logger.info(f"Canceled order {order_id} for {symbol}")
+                except BinanceAPIException as e:
+                    # Order might already be filled or canceled
+                    if e.code != -2011:  # Unknown order error code
+                        logger.warning(f"Could not cancel order {order_id} for {symbol}: {e}")
+                except Exception as e:
+                    logger.warning(f"Error canceling order {order_id} for {symbol}: {e}")
+            
+            if canceled_count > 0:
+                logger.info(f"Canceled {canceled_count} SL/TP orders for {symbol}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error canceling SL/TP orders for {symbol}: {e}")
+            return False
     
     def cancel_all_orders(self, symbol: str) -> bool:
         """
@@ -527,11 +584,29 @@ class ExecutionEngine:
             # Format symbol (replace '/' if present)
             formatted_symbol = symbol.replace("/", "")
             
+            # Get all open orders for this symbol
             self._respect_rate_limit()
-            result = self.client.cancel_all_orders(symbol=formatted_symbol)
+            open_orders = self.client.get_open_orders(symbol=formatted_symbol)
             
-            logger.info(f"Canceled all orders for {symbol}")
-            return True
+            if not open_orders:
+                logger.info(f"No open orders to cancel for {symbol}")
+                return True
+            
+            # Cancel each order individually
+            canceled_count = 0
+            for order in open_orders:
+                try:
+                    self._respect_rate_limit()
+                    self.client.cancel_order(symbol=formatted_symbol, orderId=order['orderId'])
+                    canceled_count += 1
+                    logger.info(f"Canceled order {order['orderId']} for {symbol}")
+                except BinanceAPIException as e:
+                    logger.warning(f"Could not cancel order {order['orderId']} for {symbol}: {e}")
+                except Exception as e:
+                    logger.warning(f"Error canceling order {order['orderId']} for {symbol}: {e}")
+            
+            logger.info(f"Canceled {canceled_count}/{len(open_orders)} orders for {symbol}")
+            return canceled_count > 0
             
         except BinanceAPIException as e:
             logger.error(f"API error canceling orders: {e}")
