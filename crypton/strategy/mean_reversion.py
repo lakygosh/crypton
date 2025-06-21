@@ -5,6 +5,8 @@ This module implements the core trading strategy:
 BUY  when close ≤ lower_band AND RSI < 30
 SELL when close ≥ upper_band AND RSI > 70
 """
+import json
+import os
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
@@ -13,6 +15,7 @@ import pandas as pd
 from loguru import logger
 
 from crypton.indicators.technical import IndicatorEngine
+from crypton.utils.trade_history import TradeHistoryManager
 
 
 class SignalType(Enum):
@@ -84,7 +87,7 @@ class MeanReversionStrategy:
         # Track last trade time per symbol
         self.last_trade_time: Dict[str, datetime] = {}
         
-        # Track positions with entry prices
+        # Track positions with entry prices (in-memory only)
         self.positions: Dict[str, Dict] = {}
         
         logger.info("Mean reversion strategy initialized with parameters:")
@@ -95,6 +98,30 @@ class MeanReversionStrategy:
             logger.info(f"  Cool-down period: {self.cool_down_minutes} minutes")
         else:
             logger.info(f"  Cool-down period: {self.cool_down_hours} hours")
+        
+        # Log loaded positions
+        if self.positions:
+            logger.info(f"Loaded {len(self.positions)} existing positions:")
+            for symbol, pos in self.positions.items():
+                entry_price = pos.get('entry_price', 'N/A')
+                entry_time = pos.get('entry_time', 'N/A')
+                logger.info(f"  {symbol}: Entry={entry_price} at {entry_time}")
+        else:
+            logger.info("No existing positions found")
+        
+        self.trade_history = TradeHistoryManager()
+        
+        # Read take profit tiers
+        tp_cfg = (
+            self.config.get("risk", {})
+                      .get("take_profit", {})
+        )
+
+        self.tp_tiers = [
+            {"name": "tier1", "pct": tp_cfg.get("tier1_pct", 0.01), "size": tp_cfg.get("tier1_size_pct", 0.5)},
+            {"name": "tier2", "pct": tp_cfg.get("tier2_pct", 0.02), "size": tp_cfg.get("tier2_size_pct", 0.3)},
+            {"name": "tier3", "pct": tp_cfg.get("tier3_pct", 0.03), "size": tp_cfg.get("tier3_size_pct", 1.0)},
+        ]
     
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -175,32 +202,32 @@ class MeanReversionStrategy:
                     logger.info(f"  Row {latest_idx}: Close={latest_candle['close']:.4f}, BBL={latest_candle['BBL']:.4f}, RSI={latest_candle['RSI']:.2f}")
                 
                 # For SELL signals, check if we have an open position and if current price is above entry price by profit target %
-                position = self.positions.get(symbol, {})
-                entry_price = position.get('entry_price')
+                position = self.trade_history.get_position(symbol)
+                if position:
+                    entry_price = position["entry_price"]
+                    remaining_qty = position["quantity"]
+                    tp_hits      = {hit["tier"] for hit in position.get("tp_hits", [])}
+
+                    for tier in self.tp_tiers:
+                        if tier["name"] in tp_hits:
+                            continue                     # već odrađeno
+                        target_price = entry_price * (1 + tier["pct"])
+                        if latest_candle["close"] >= target_price:
+                            df.loc[latest_idx, "signal"] = SignalType.SELL.value
+                            df.loc[latest_idx, "sell_size_pct"] = tier["size"]
+                            df.loc[latest_idx, "sell_tier"] = tier["name"]
+                            break                         # samo jedan tier po svijeći
                 
-                if entry_price:
-                    # Calculate profit percentage
-                    profit_threshold = entry_price * (1 + self.take_profit_pct)
-                    
-                    # Generate sell signal for latest candle only if profit target is hit
-                    if latest_candle['close'] >= profit_threshold:
-                        df.loc[latest_idx, 'signal'] = SignalType.SELL.value
-                        logger.info(f"NEW Sell signal generated for latest candle:")
-                        logger.info(f"  Row {latest_idx}: Close={latest_candle['close']:.4f}, Entry={entry_price:.4f}, Target={profit_threshold:.4f}")
-                else:
-                    # If no position, we're looking to enter, not exit
-                    pass
-            
-            # Count signals in the entire dataframe (for logging purposes)
-            buy_count = (df['signal'] == SignalType.BUY.value).sum()
-            sell_count = (df['signal'] == SignalType.SELL.value).sum()
-            
-            # Log how many signals are in the current dataframe and specifically for the latest candle
-            latest_signal = df.iloc[-1]['signal']
-            logger.info(f"Signal status for {symbol}: Latest candle signal = {latest_signal}")
-            logger.info(f"Total signals in dataframe: {buy_count} BUY, {sell_count} SELL (mostly historical)")
-            
-            return df
+                # Count signals in the entire dataframe (for logging purposes)
+                buy_count = (df['signal'] == SignalType.BUY.value).sum()
+                sell_count = (df['signal'] == SignalType.SELL.value).sum()
+                
+                # Log how many signals are in the current dataframe and specifically for the latest candle
+                latest_signal = df.iloc[-1]['signal']
+                logger.info(f"Signal status for {symbol}: Latest candle signal = {latest_signal}")
+                logger.info(f"Total signals in dataframe: {buy_count} BUY, {sell_count} SELL (mostly historical)")
+                
+                return df
             
         except Exception as e:
             logger.error(f"Error generating signals: {e}")
@@ -269,6 +296,30 @@ class MeanReversionStrategy:
             elif latest_signal == SignalType.SELL.value:
                 signal = SignalType.SELL
                 logger.info(f"ACTIVE SELL signal found for {symbol} at price {price}")
+                tier_pct = last_row.get("sell_size_pct", 1.0)        # default = 100 %
+                tier_name = last_row.get("sell_tier", "full")
+                if symbol in execution.open_positions:
+                    full_qty = execution.open_positions[symbol]["quantity"]
+                    sell_qty = round(full_qty * tier_pct, 8)
+                    order = execution.place_market_order(
+                        symbol=symbol,
+                        side=OrderSide.SELL,
+                        quantity=sell_qty
+                    )
+                    if order:
+                        logger.info(f"Executed SELL ({tier_name}) {sell_qty}/{full_qty} for {symbol} @ {price}")
+                        execution.open_positions[symbol]["quantity"] -= sell_qty
+                        # snimi TP u istoriju
+                        trade_history.record_partial_take_profit(
+                            symbol=symbol,
+                            price=price,
+                            quantity=sell_qty,
+                            order_id=str(order["orderId"]),
+                            tier=int(tier_name[-1])
+                        )
+                        # ako je sve zatvoreno -> close
+                        if execution.open_positions[symbol]["quantity"] <= 0:
+                            execution.open_positions.pop(symbol, None)
             else:
                 signal = SignalType.NEUTRAL
                 logger.info(f"No active trade signal for {symbol} at price {price}")
@@ -295,8 +346,6 @@ class MeanReversionStrategy:
                     logger.info(f"Position closed for {symbol} - Entry: {entry_price}, Exit: {price}, Profit: {profit_pct:.2f}%")
                     # Clear position data after selling
                     self.positions.pop(symbol, None)
-                else:
-                    logger.info(f"SELL signal for {symbol} but no position tracking found")
             
             return signal, price, last_row
             

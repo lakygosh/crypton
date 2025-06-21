@@ -2,38 +2,16 @@
   "positions": {
     "ETH/USDT": {
       "symbol": "ETH/USDT",
-      "quantity": 6.165,
-      "entry_price": 2646.08,
-      "order_id": "unknown",
-      "entry_time": "2025-05-29T18:47:31.970106",
-      "position_value": 16313.0832,
-      "status": "open",
-      "tp_hits": [],
-      "sl_hit": false
-    },
-    "BTC/USDT": {
-      "symbol": "BTC/USDT",
-      "quantity": 0.38065,
-      "entry_price": 106928.36,
-      "order_id": "unknown",
-      "entry_time": "2025-05-29T18:47:31.973200",
-      "position_value": 40702.280234,
-      "status": "open",
-      "tp_hits": [],
-      "sl_hit": false
-    },
-    "SUI/USDT": {
-      "symbol": "SUI/USDT",
-      "quantity": 6217.6,
-      "entry_price": 3.5609,
-      "order_id": "unknown",
-      "entry_time": "2025-05-29T18:47:31.976298",
-      "position_value": 22140.25184,
+      "quantity": 16.1443,
+      "entry_price": 2392.3292254851553,
+      "order_id": "4799247",
+      "entry_time": "2025-06-20T22:43:56.829",
+      "position_value": 38622.480715,
       "status": "open",
       "tp_hits": [],
       "sl_hit": false
     }
   },
   "closed_trades": [],
-  "last_updated": "2025-05-29T18:47:31.977367"
+  "last_updated": "2025-06-20T22:43:57.000000"
 }
