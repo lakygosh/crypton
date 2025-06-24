@@ -49,6 +49,7 @@ class TradeHistoryManager:
         
         # Load existing data if available
         self._load_data()
+        logger.info(f"Loaded {len(self.positions)} open positions and {len(self.closed_trades)} closed trades")
         
     def _load_data(self):
         """Load trade history from file if it exists."""
@@ -229,7 +230,14 @@ class TradeHistoryManager:
         Returns:
             Position data or None if not found
         """
-        return self.positions.get(symbol)
+        # Refresh data from file to ensure we have latest state
+        self._load_data()
+        position = self.positions.get(symbol)
+        if position:
+            logger.debug(f"Found position for {symbol}: status={position.get('status', 'unknown')}")
+        else:
+            logger.debug(f"No position found for {symbol}")
+        return position
     
     def get_closed_trades(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """

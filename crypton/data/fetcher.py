@@ -63,21 +63,38 @@ class DataFetcher:
             }
         })
         
-        # Initialize Binance client
-        if self.testnet:
-            # For testnet, we need to use the testnet base URL
-            self.client = Client(
-                api_key=self.api_key, 
-                api_secret=self.api_secret
-            )
-            # Set the testnet URL
-            self.client.API_URL = 'https://testnet.binance.vision/api'
-        else:
-            # For production
-            self.client = Client(
-                api_key=self.api_key, 
-                api_secret=self.api_secret
-            )
+        # Initialize Binance client with retry mechanism
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                if self.testnet:
+                    # For testnet, we need to use the testnet base URL
+                    self.client = Client(
+                        api_key=self.api_key, 
+                        api_secret=self.api_secret
+                    )
+                    # Set the testnet URL
+                    self.client.API_URL = 'https://testnet.binance.vision/api'
+                else:
+                    # For production
+                    self.client = Client(
+                        api_key=self.api_key, 
+                        api_secret=self.api_secret
+                    )
+                logger.info(f"Binance client initialized successfully on attempt {attempt + 1}")
+                break
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Failed to initialize Binance client (attempt {attempt + 1}/{max_retries}): {e}")
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to initialize Binance client after {max_retries} attempts: {e}")
+                    raise
         
         # WebSocket manager for live data
         self.ws_manager = None
