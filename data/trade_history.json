@@ -1,39 +1,57 @@
 {
-  "positions": {
-    "SUI/USDT": {
-      "symbol": "SUI/USDT",
-      "quantity": 14625.3,
-      "entry_price": 2.6583184551,
-      "order_id": "2656244",
-      "entry_time": "2025-06-21T13:47:12.059000",
-      "position_value": 38878.99742,
-      "status": "open",
-      "tp_hits": [],
-      "sl_hit": false
-    },
-    "ETH/USDT": {
-      "symbol": "ETH/USDT",
-      "quantity": 10.7909,
-      "entry_price": 2404.248163,
-      "order_id": "5086273",
-      "entry_time": "2025-06-21T17:47:27.285000",
-      "position_value": 25944.013624,
-      "status": "open",
-      "tp_hits": [],
-      "sl_hit": false
-    },
-    "BTC/USDT": {
+  "positions": {},
+  "closed_trades": [
+    {
       "symbol": "BTC/USDT",
       "quantity": 0.16868,
       "entry_price": 102568.115063,
       "order_id": "7841888",
       "entry_time": "2025-06-21T19:02:32.829000",
       "position_value": 17301.189551,
-      "status": "open",
+      "status": "closed",
       "tp_hits": [],
-      "sl_hit": false
+      "sl_hit": false,
+      "exit_price": 105578.26,
+      "exit_time": "2025-06-24T15:03:02.164000",
+      "exit_quantity": 0.16868,
+      "exit_order_id": "sell_btc_24062025",
+      "profit_loss": 507.75,
+      "exit_reason": "signal"
+    },
+    {
+      "symbol": "ETH/USDT",
+      "quantity": 10.7909,
+      "entry_price": 2404.248163,
+      "order_id": "5086273",
+      "entry_time": "2025-06-21T17:47:27.285000",
+      "position_value": 25944.013624,
+      "status": "closed",
+      "tp_hits": [],
+      "sl_hit": false,
+      "exit_price": 2434.37,
+      "exit_time": "2025-06-24T15:03:03.558000",
+      "exit_quantity": 10.7909,
+      "exit_order_id": "sell_eth_24062025",
+      "profit_loss": 325.04,
+      "exit_reason": "signal"
+    },
+    {
+      "symbol": "SUI/USDT",
+      "quantity": 14625.3,
+      "entry_price": 2.6583184551,
+      "order_id": "2656244",
+      "entry_time": "2025-06-21T13:47:12.059000",
+      "position_value": 38878.99742,
+      "status": "closed",
+      "tp_hits": [],
+      "sl_hit": false,
+      "exit_price": 2.7957,
+      "exit_time": "2025-06-24T15:03:04.685000",
+      "exit_quantity": 14625.3,
+      "exit_order_id": "sell_sui_24062025",
+      "profit_loss": 2009.21,
+      "exit_reason": "signal"
     }
-  },
-  "closed_trades": [],
-  "last_updated": "2025-06-21T19:02:32.829000"
+  ],
+  "last_updated": "2025-06-24T15:03:04.685000"
 }
