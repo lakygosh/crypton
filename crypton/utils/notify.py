@@ -16,7 +16,10 @@ def notify_trade_execution(
     side: str, 
     price: float, 
     quantity: float, 
-    order_id: Optional[str] = None
+    order_id: Optional[str] = None,
+    profit: Optional[float] = None,
+    profit_pct: Optional[float] = None,
+    entry_price: Optional[float] = None
 ):
     """
     Send trade execution notification to all configured channels.
@@ -27,8 +30,14 @@ def notify_trade_execution(
         price: Execution price
         quantity: Order quantity
         order_id: Order ID (optional)
+        profit: Profit/loss amount for SELL orders (optional)
+        profit_pct: Profit/loss percentage for SELL orders (optional)
+        entry_price: Entry price for SELL orders (optional)
     """
-    logger.info(f"Executed {side} order for {symbol}: {quantity} @ {price}")
+    if side == "SELL" and profit is not None and profit_pct is not None:
+        logger.info(f"Executed {side} order for {symbol}: {quantity} @ {price} | Profit: ${profit:.2f} ({profit_pct:+.2f}%)")
+    else:
+        logger.info(f"Executed {side} order for {symbol}: {quantity} @ {price}")
     
     # Send to Slack
     slack.notify_trade(
@@ -36,7 +45,10 @@ def notify_trade_execution(
         side=side,
         price=price,
         quantity=quantity,
-        order_id=order_id
+        order_id=order_id,
+        profit=profit,
+        profit_pct=profit_pct,
+        entry_price=entry_price
     )
     
     # Send to Discord
@@ -45,7 +57,10 @@ def notify_trade_execution(
         side=side,
         price=price,
         quantity=quantity,
-        order_id=order_id
+        order_id=order_id,
+        profit=profit,
+        profit_pct=profit_pct,
+        entry_price=entry_price
     )
 
 def notify_trade_completed(

@@ -165,7 +165,10 @@ class SlackNotifier:
         side: str, 
         price: float, 
         quantity: float,
-        order_id: Optional[str] = None
+        order_id: Optional[str] = None,
+        profit: Optional[float] = None,
+        profit_pct: Optional[float] = None,
+        entry_price: Optional[float] = None
     ) -> bool:
         """
         Send trade notification.
@@ -176,6 +179,9 @@ class SlackNotifier:
             price: Execution price
             quantity: Order quantity
             order_id: Order ID (optional)
+            profit: Profit/loss amount for SELL orders (optional)
+            profit_pct: Profit/loss percentage for SELL orders (optional)
+            entry_price: Entry price for SELL orders (optional)
             
         Returns:
             True if successful, False otherwise
@@ -184,38 +190,65 @@ class SlackNotifier:
         if side.upper() == "BUY":
             color = "#36a64f"  # Green
             emoji = ":chart_with_upwards_trend:"
+            message = f"{emoji} *{side.upper()} Order Executed*"
         else:
-            color = "#e01e5a"  # Red
-            emoji = ":chart_with_downwards_trend:"
+            # For SELL orders, use green if profit, red if loss
+            if profit is not None and profit >= 0:
+                color = "#36a64f"  # Green for profit
+                emoji = ":white_check_mark:"
+                message = f"{emoji} *SELL Order Executed - PROFIT* :moneybag:"
+            elif profit is not None and profit < 0:
+                color = "#e01e5a"  # Red for loss
+                emoji = ":x:"
+                message = f"{emoji} *SELL Order Executed - LOSS* :chart_with_downwards_trend:"
+            else:
+                color = "#e01e5a"  # Default red for SELL
+                emoji = ":chart_with_downwards_trend:"
+                message = f"{emoji} *{side.upper()} Order Executed*"
         
-        # Format message
-        message = f"{emoji} *{side.upper()} Order Executed*"
+        # Prepare fields
+        fields = [
+            {
+                "title": "Symbol",
+                "value": symbol,
+                "short": True
+            },
+            {
+                "title": "Exit Price" if side.upper() == "SELL" else "Price",
+                "value": f"${price:.4f}",
+                "short": True
+            },
+            {
+                "title": "Quantity",
+                "value": f"{quantity:.6f}",
+                "short": True
+            },
+            {
+                "title": "Total",
+                "value": f"${price * quantity:.2f}",
+                "short": True
+            }
+        ]
+        
+        # Add profit information for SELL orders
+        if side.upper() == "SELL" and profit is not None and profit_pct is not None:
+            fields.extend([
+                {
+                    "title": "Entry Price",
+                    "value": f"${entry_price:.4f}" if entry_price else "N/A",
+                    "short": True
+                },
+                {
+                    "title": "Profit/Loss",
+                    "value": f"${profit:+.2f} ({profit_pct:+.2f}%)",
+                    "short": True
+                }
+            ])
         
         # Prepare attachment
         attachment = {
             "color": color,
-            "fields": [
-                {
-                    "title": "Symbol",
-                    "value": symbol,
-                    "short": True
-                },
-                {
-                    "title": "Price",
-                    "value": f"${price:.2f}",
-                    "short": True
-                },
-                {
-                    "title": "Quantity",
-                    "value": f"{quantity:.6f}",
-                    "short": True
-                },
-                {
-                    "title": "Total",
-                    "value": f"${price * quantity:.2f}",
-                    "short": True
-                }
-            ],
+            "fields": fields,
             "footer": f"Order ID: {order_id}" if order_id else None,
             "ts": int(datetime.now().timestamp())
         }
@@ -291,7 +324,8 @@ class DiscordNotifier:
             logger.error(f"Error sending Discord notification: {e}")
             return False
     
-    def notify_trade(self, symbol: str, side: str, price: float, quantity: float, order_id: Optional[str] = None) -> bool:
+    def notify_trade(self, symbol: str, side: str, price: float, quantity: float, order_id: Optional[str] = None, 
+                    profit: Optional[float] = None, profit_pct: Optional[float] = None, entry_price: Optional[float] = None) -> bool:
         """
         Send trade notification.
         
@@ -301,6 +335,9 @@ class DiscordNotifier:
             price: Execution price
             quantity: Order quantity
             order_id: Order ID (optional)
+            profit: Profit/loss amount for SELL orders (optional)
+            profit_pct: Profit/loss percentage for SELL orders (optional)
+            entry_price: Entry price for SELL orders (optional)
             
         Returns:
             True if successful, False otherwise
@@ -310,42 +347,74 @@ class DiscordNotifier:
             color = 0x36a64f  # Green in decimal
             title = "🟢 BUY Order Executed"
         else:
-            color = 0xe01e5a  # Red in decimal
-            title = "🔴 SELL Order Executed"
+            # For SELL orders, use green if profit, red if loss
+            if profit is not None and profit >= 0:
+                color = 0x36a64f  # Green for profit
+                title = "✅ SELL Order Executed - PROFIT"
+            elif profit is not None and profit < 0:
+                color = 0xe01e5a  # Red for loss
+                title = "❌ SELL Order Executed - LOSS"
+            else:
+                color = 0x36a64f  # Default green if no profit info
+                title = "🔴 SELL Order Executed"
+        
+        # Prepare fields
+        fields = [
+            {
+                "name": "Symbol",
+                "value": symbol,
+                "inline": True
+            },
+            {
+                "name": "Exit Price" if side.upper() == "SELL" else "Price",
+                "value": f"${price:.4f}",
+                "inline": True
+            },
+            {
+                "name": "Quantity",
+                "value": f"{quantity:.6f}",
+                "inline": True
+            },
+            {
+                "name": "Total",
+                "value": f"${price * quantity:.2f}",
+                "inline": True
+            }
+        ]
+        
+        # Add profit information for SELL orders
+        if side.upper() == "SELL" and profit is not None and profit_pct is not None:
+            fields.extend([
+                {
+                    "name": "Entry Price",
+                    "value": f"${entry_price:.4f}" if entry_price else "N/A",
+                    "inline": True
+                },
+                {
+                    "name": "Profit/Loss",
+                    "value": f"${profit:+.2f} ({profit_pct:+.2f}%)",
+                    "inline": True
+                }
+            ])
         
         # Prepare embed
         embed = {
             "title": title,
             "color": color,
-            "fields": [
-                {
-                    "name": "Symbol",
-                    "value": symbol,
-                    "inline": True
-                },
-                {
-                    "name": "Price",
-                    "value": f"${price:.2f}",
-                    "inline": True
-                },
-                {
-                    "name": "Quantity",
-                    "value": f"{quantity:.6f}",
-                    "inline": True
-                },
-                {
-                    "name": "Total",
-                    "value": f"${price * quantity:.2f}",
-                    "inline": True
-                }
-            ],
+            "fields": fields,
             "footer": {
                 "text": f"Order ID: {order_id}" if order_id else "Crypton Trading Bot"
             },
             "timestamp": datetime.now().isoformat()
         }
         
-        return self.send_message(f"New {side.upper()} order for {symbol}", [embed])
+        # Message text
+        message = f"New {side.upper()} order for {symbol}"
+        if side.upper() == "SELL" and profit is not None:
+            profit_emoji = "📈" if profit >= 0 else "📉"
+            message += f" {profit_emoji} Profit: ${profit:+.2f} ({profit_pct:+.2f}%)"
+        
+        return self.send_message(message, [embed])
     
     def notify_trade_completed(self, symbol: str, entry_price: float, exit_price: float, quantity: float, profit: float, profit_pct: float) -> bool:
         """

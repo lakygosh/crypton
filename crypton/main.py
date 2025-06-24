@@ -276,19 +276,28 @@ def run_paper_trade(config_path: Optional[str] = None):
                     positions = execution.open_positions
                     if symbol in positions:
                         quantity = positions[symbol]["quantity"]
+                        entry_price = positions[symbol].get("entry_price", 0)
+                        
                         order = execution.place_market_order(
                             symbol=symbol,
                             side=OrderSide.SELL,
                             quantity=quantity
                         )
                         if order:
-                            logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price}")
+                            # Calculate profit/loss
+                            profit = (price - entry_price) * quantity
+                            profit_pct = ((price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+                            
+                            logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price} | Profit: ${profit:.2f} ({profit_pct:+.2f}%)")
                             notify_trade_execution(
                                 symbol=symbol,
                                 side="SELL",
                                 price=price,
                                 quantity=quantity,
-                                order_id=order.get("orderId")
+                                order_id=order.get("orderId"),
+                                profit=profit,
+                                profit_pct=profit_pct,
+                                entry_price=entry_price
                             )
                     else:
                         logger.warning(f"SELL signal for {symbol} but no open position")
@@ -442,6 +451,7 @@ def run_live_trade(config_path: Optional[str] = None):
                     positions = execution.open_positions
                     if symbol in positions:
                         quantity = positions[symbol]["quantity"]
+                        entry_price = positions[symbol].get("entry_price", 0)
                         
                         # Place order
                         try:
@@ -452,13 +462,20 @@ def run_live_trade(config_path: Optional[str] = None):
                             )
                             
                             if order:
-                                logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price}")
+                                # Calculate profit/loss
+                                profit = (price - entry_price) * quantity
+                                profit_pct = ((price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+                                
+                                logger.info(f"Executed SELL order for {symbol}: {quantity} @ {price} | Profit: ${profit:.2f} ({profit_pct:+.2f}%)")
                                 notify_trade_execution(
                                     symbol=symbol,
                                     side="SELL",
                                     price=price,
                                     quantity=quantity,
-                                    order_id=order.get("orderId")
+                                    order_id=order.get("orderId"),
+                                    profit=profit,
+                                    profit_pct=profit_pct,
+                                    entry_price=entry_price
                                 )
                         except Exception as e:
                             error_msg = f"Greška pri izvršavanju SELL naloga za {symbol}: {e}"
