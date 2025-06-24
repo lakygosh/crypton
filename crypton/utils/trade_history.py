@@ -27,14 +27,23 @@ class TradeHistoryManager:
             file_path: Path to the trade history file (optional)
         """
         if file_path is None:
-            # Default to data directory in project root
-            data_dir = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            data_dir = data_dir / "data"
-            data_dir.mkdir(exist_ok=True)
-            self.file_path = data_dir / "trade_history.json"
+            # Check if we're running in Docker (common pattern: use /home/crypton/data)
+            docker_data_path = Path("/home/crypton/data")
+            if docker_data_path.exists():
+                self.file_path = docker_data_path / "trade_history.json"
+            else:
+                # Default to data directory in project root (for local development)
+                data_dir = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                data_dir = data_dir / "data"
+                data_dir.mkdir(exist_ok=True)
+                self.file_path = data_dir / "trade_history.json"
         else:
             self.file_path = Path(file_path)
             
+        logger.info(f"TradeHistoryManager initialized with file path: {self.file_path}")
+        logger.info(f"Current working directory: {Path.cwd()}")
+        logger.info(f"Data directory exists: {self.file_path.parent.exists()}")
+        
         self.positions = {}
         self.closed_trades = []
         
@@ -69,12 +78,33 @@ class TradeHistoryManager:
                 'last_updated': datetime.now().isoformat()
             }
             
+            # Ensure the directory exists
+            self.file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Debug info before saving
+            logger.debug(f"Attempting to save trade history to: {self.file_path}")
+            logger.debug(f"Directory exists: {self.file_path.parent.exists()}")
+            logger.debug(f"File path is absolute: {self.file_path.is_absolute()}")
+            logger.debug(f"Number of positions to save: {len(self.positions)}")
+            
             with open(self.file_path, 'w') as f:
                 json.dump(data, f, indent=2)
+                f.flush()  # Ensure data is written to disk
                 
-            logger.info(f"Saved trade history to {self.file_path}")
+            # Verify the file was written
+            if self.file_path.exists() and self.file_path.stat().st_size > 0:
+                logger.info(f"Successfully saved trade history to {self.file_path} ({self.file_path.stat().st_size} bytes)")
+            else:
+                logger.error(f"Trade history file was not created or is empty: {self.file_path}")
+                
+        except PermissionError as e:
+            logger.error(f"Permission denied saving trade history to {self.file_path}: {e}")
+        except OSError as e:
+            logger.error(f"OS error saving trade history to {self.file_path}: {e}")
         except Exception as e:
-            logger.error(f"Error saving trade history: {e}")
+            logger.error(f"Unexpected error saving trade history to {self.file_path}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
     
     def record_position_open(self, symbol: str, quantity: float, entry_price: float, 
                            order_id: str, timestamp: Optional[str] = None):
