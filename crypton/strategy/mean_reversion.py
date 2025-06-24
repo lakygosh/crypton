@@ -203,6 +203,7 @@ class MeanReversionStrategy:
                 
                 # For SELL signals, check if we have an open position and if current price is above entry price by profit target %
                 position = self.trade_history.get_position(symbol)
+                logger.info(f"DEBUG: Checking for {symbol} position: {position}")
                 if position:
                     entry_price = position["entry_price"]
                     remaining_qty = position["quantity"]
