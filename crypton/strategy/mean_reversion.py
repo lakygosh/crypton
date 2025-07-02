@@ -64,37 +64,45 @@ class MeanReversionStrategy:
         ]
         
         # Cool-down period for trades (to avoid overtrading)
-        cool_down_value = self.config.get('cool_down', {}).get('hours', 4)
-        # Support for time interval formats like '15m'
-        self.cool_down_hours = 0
-        self.cool_down_minutes = 0
+        cool_down_config = self.config.get('cool_down', {})
+        cool_down_value = cool_down_config.get('minutes') or cool_down_config.get('hours', 4)
         
-        if isinstance(cool_down_value, str):
-            if cool_down_value.endswith('m'):
-                try:
-                    self.cool_down_minutes = int(cool_down_value.rstrip('m'))
-                    logger.info(f"Cool-down set to {self.cool_down_minutes} minutes")
-                except ValueError:
-                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
-                    self.cool_down_hours = 4
-            elif cool_down_value.endswith('h'):
-                try:
-                    self.cool_down_hours = int(cool_down_value.rstrip('h'))
-                    logger.info(f"Cool-down set to {self.cool_down_hours} hours")
-                except ValueError:
-                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
-                    self.cool_down_hours = 4
-            else:
-                try:
-                    # Assume hours if no unit is specified
-                    self.cool_down_hours = float(cool_down_value)
-                    logger.info(f"Cool-down set to {self.cool_down_hours} hours")
-                except ValueError:
-                    logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
-                    self.cool_down_hours = 4
+        # If we got minutes directly from config, convert to appropriate format
+        if 'minutes' in cool_down_config:
+            self.cool_down_hours = 0
+            self.cool_down_minutes = cool_down_config['minutes']
+            logger.info(f"Cool-down set to {self.cool_down_minutes} minutes")
         else:
-            # If a numeric value, assume it's hours
-            self.cool_down_hours = float(cool_down_value)
+            # Support for time interval formats like '15m' or legacy hours config
+            self.cool_down_hours = 0
+            self.cool_down_minutes = 0
+            
+            if isinstance(cool_down_value, str):
+                if cool_down_value.endswith('m'):
+                    try:
+                        self.cool_down_minutes = int(cool_down_value.rstrip('m'))
+                        logger.info(f"Cool-down set to {self.cool_down_minutes} minutes")
+                    except ValueError:
+                        logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                        self.cool_down_hours = 4
+                elif cool_down_value.endswith('h'):
+                    try:
+                        self.cool_down_hours = int(cool_down_value.rstrip('h'))
+                        logger.info(f"Cool-down set to {self.cool_down_hours} hours")
+                    except ValueError:
+                        logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                        self.cool_down_hours = 4
+                else:
+                    try:
+                        # Assume hours if no unit is specified
+                        self.cool_down_hours = float(cool_down_value)
+                        logger.info(f"Cool-down set to {self.cool_down_hours} hours")
+                    except ValueError:
+                        logger.error(f"Invalid cool_down format: {cool_down_value}, using default 4 hours")
+                        self.cool_down_hours = 4
+            else:
+                # If a numeric value, assume it's hours
+                self.cool_down_hours = float(cool_down_value)
         
         # Track last trade time per symbol
         self.last_trade_time: Dict[str, datetime] = {}

@@ -79,31 +79,9 @@ class IndicatorEngine:
                 std=std
             )
             
-            # Check what columns are returned
-            logger.debug(f"BBands result columns: {bb_result.columns.tolist()}")
-            
-            # Explicitly rename columns to what our strategy expects
-            # pandas_ta typically returns: BBL_x, BBM_x, BBU_x where x is the length
-            expected_prefix = f"BBL_{length}"
-            
-            # Create a mapping of original column names to required column names
-            column_mapping = {}
-            for col in bb_result.columns:
-                if col.startswith(f"BBL_"):
-                    column_mapping[col] = "BBL"
-                elif col.startswith(f"BBM_"):
-                    column_mapping[col] = "BBM"
-                elif col.startswith(f"BBU_"):
-                    column_mapping[col] = "BBU"
-            
-            # Rename columns if needed
-            if column_mapping:
-                bb_result = bb_result.rename(columns=column_mapping)
-                logger.debug(f"Renamed BBands columns to: {bb_result.columns.tolist()}")
-            
-            # If BBL, BBM, BBU are still not in the columns, calculate manually
-            if "BBL" not in bb_result.columns or "BBU" not in bb_result.columns:
-                logger.warning("pandas_ta BBands did not return expected columns, calculating manually")
+            # Check if bb_result is None (pandas_ta can return None in some cases)
+            if bb_result is None:
+                logger.warning("pandas_ta BBands returned None, calculating manually")
                 # Manual calculation of Bollinger Bands
                 ma = df[source_column].rolling(window=length).mean()
                 std_dev = df[source_column].rolling(window=length).std()
@@ -114,6 +92,42 @@ class IndicatorEngine:
                     "BBM": ma,
                     "BBU": ma + std * std_dev
                 })
+            else:
+                # Check what columns are returned
+                logger.debug(f"BBands result columns: {bb_result.columns.tolist()}")
+                
+                # Explicitly rename columns to what our strategy expects
+                # pandas_ta typically returns: BBL_x, BBM_x, BBU_x where x is the length
+                expected_prefix = f"BBL_{length}"
+                
+                # Create a mapping of original column names to required column names
+                column_mapping = {}
+                for col in bb_result.columns:
+                    if col.startswith(f"BBL_"):
+                        column_mapping[col] = "BBL"
+                    elif col.startswith(f"BBM_"):
+                        column_mapping[col] = "BBM"
+                    elif col.startswith(f"BBU_"):
+                        column_mapping[col] = "BBU"
+                
+                # Rename columns if needed
+                if column_mapping:
+                    bb_result = bb_result.rename(columns=column_mapping)
+                    logger.debug(f"Renamed BBands columns to: {bb_result.columns.tolist()}")
+                
+                # If BBL, BBM, BBU are still not in the columns, calculate manually
+                if "BBL" not in bb_result.columns or "BBU" not in bb_result.columns:
+                    logger.warning("pandas_ta BBands did not return expected columns, calculating manually")
+                    # Manual calculation of Bollinger Bands
+                    ma = df[source_column].rolling(window=length).mean()
+                    std_dev = df[source_column].rolling(window=length).std()
+                    
+                    # Create a new DataFrame with proper column names
+                    bb_result = pd.DataFrame({
+                        "BBL": ma - std * std_dev,
+                        "BBM": ma,
+                        "BBU": ma + std * std_dev
+                    })
             
             # Merge with original dataframe
             df = pd.concat([df, bb_result], axis=1)
@@ -152,10 +166,22 @@ class IndicatorEngine:
                 return df
             
             # Calculate RSI
-            df['RSI'] = ta.rsi(
+            rsi_result = ta.rsi(
                 close=df[source_column], 
                 length=length
             )
+            
+            # Check if rsi_result is None (pandas_ta can return None in some cases)
+            if rsi_result is None:
+                logger.warning("pandas_ta RSI returned None, calculating manually")
+                # Manual RSI calculation (simplified version)
+                delta = df[source_column].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
+                rs = gain / loss
+                df['RSI'] = 100 - (100 / (1 + rs))
+            else:
+                df['RSI'] = rsi_result
             
             logger.debug(f"Added RSI (length={length})")
             return df
@@ -191,10 +217,18 @@ class IndicatorEngine:
                 return df
             
             # Calculate SMA
-            df['SMA'] = ta.sma(
+            sma_result = ta.sma(
                 close=df[source_column], 
                 length=length
             )
+            
+            # Check if sma_result is None (pandas_ta can return None in some cases)
+            if sma_result is None:
+                logger.warning("pandas_ta SMA returned None, calculating manually")
+                # Manual SMA calculation
+                df['SMA'] = df[source_column].rolling(window=length).mean()
+            else:
+                df['SMA'] = sma_result
             
             logger.debug(f"Added SMA (length={length})")
             return df
