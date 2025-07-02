@@ -70,3 +70,4 @@ venv.bak/
 *.log
 data/*.csv
 data/*.parquet
+data/trade_history.json
